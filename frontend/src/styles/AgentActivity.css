@@ -283,3 +283,146 @@
     gap: 8px;
   }
 }
+.activity-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.activity-badge {
+  flex-shrink: 0;
+
+  padding: 3px 5px;
+
+  border-radius: 4px;
+
+  font-size: 4px;
+  font-weight: 800;
+  letter-spacing: .35px;
+}
+
+.activity-badge.done {
+  color: #4ed39a;
+  background: rgba(78, 211, 154, .08);
+}
+
+.activity-badge.active {
+  color: #a38cff;
+  background: rgba(128, 101, 245, .1);
+}
+
+.activity-badge.review {
+  color: #d3a24e;
+  background: rgba(211, 162, 78, .08);
+}
+
+.activity-badge.blocked {
+  color: #e46d75;
+  background: rgba(228, 109, 117, .08);
+}
+
+.activity-badge.waiting {
+  color: #555966;
+  background: #171920;
+}
+
+.activity-icon.done {
+  color: #4ed39a;
+  background: rgba(78, 211, 154, .08);
+}
+
+.activity-icon.active {
+  color: #a38cff;
+  background: rgba(128, 101, 245, .1);
+}
+
+.activity-icon.review {
+  color: #d3a24e;
+  background: rgba(211, 162, 78, .08);
+}
+
+.activity-icon.blocked {
+  color: #e46d75;
+  background: rgba(228, 109, 117, .08);
+}
+
+.activity-icon.waiting {
+  color: #555966;
+  background: #171920;
+}
+
+.activity-connector.completed {
+  background: rgba(78, 211, 154, .35);
+}
+
+.activity-current-state {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+
+  margin-top: 10px;
+  padding: 7px 8px;
+
+  border: 1px solid #20232c;
+  border-radius: 6px;
+
+  background: #13141a;
+}
+
+.activity-current-state .state-dot {
+  width: 5px;
+  height: 5px;
+
+  flex-shrink: 0;
+
+  border-radius: 50%;
+
+  background: #8065f5;
+}
+
+.activity-current-state > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.activity-current-state span:not(.state-dot) {
+  color: #555966;
+  font-size: 4px;
+  font-weight: 800;
+  letter-spacing: .45px;
+}
+
+.activity-current-state strong {
+  color: #9296a1;
+  font-size: 6px;
+}
+
+.activity-current-state.success {
+  border-color: rgba(78, 211, 154, .12);
+}
+
+.activity-current-state.success .state-dot {
+  background: #4ed39a;
+}
+
+.activity-current-state.review {
+  border-color: rgba(211, 162, 78, .12);
+}
+
+.activity-current-state.review .state-dot {
+  background: #d3a24e;
+}
+
+.activity-current-state.danger {
+  border-color: rgba(228, 109, 117, .12);
+}
+
+.activity-current-state.danger .state-dot {
+  background: #e46d75;
+}
+
+.live-small.danger {
+  color: #e46d75;
+}

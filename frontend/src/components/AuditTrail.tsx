@@ -13,20 +13,36 @@ import {
   Sparkles,
   TrendingUp,
   CreditCard,
+  XCircle,
 } from "lucide-react";
+
 import "../styles/AuditTrail.css";
 
-type AuditEvent = {
+import {
+  useAgentContext,
+} from "../context/AgentContext";
+
+import type {
+  AuditEvent as AgentAuditEvent,
+} from "../types";
+
+type AuditStatus =
+  | "success"
+  | "pending"
+  | "review"
+  | "failed";
+
+type AuditEventView = {
   time: string;
   type: string;
   title: string;
   description: string;
   tool?: string;
-  status: "success" | "pending";
+  status: AuditStatus;
   icon: any;
 };
 
-const auditEvents: AuditEvent[] = [
+const fallbackAuditEvents: AuditEventView[] = [
   {
     time: "10:42:18.102",
     type: "INTENT",
@@ -100,6 +116,35 @@ const auditEvents: AuditEvent[] = [
 ];
 
 function AuditTrail() {
+  const {
+    auditTrail,
+    status,
+  } = useAgentContext();
+
+  const events =
+    auditTrail.length > 0
+      ? auditTrail.map(
+          mapAuditEvent
+        )
+      : fallbackAuditEvents;
+
+  const toolCount =
+    new Set(
+      events
+        .map((event) => event.tool)
+        .filter(Boolean)
+    ).size;
+
+  const decisionCount =
+    events.filter((event) =>
+      [
+        "DECISION",
+        "GROWTH",
+        "POLICY",
+        "CHECKOUT",
+      ].includes(event.type)
+    ).length;
+
   return (
     <div className="audit-trail-card">
       {/* HEADER */}
@@ -133,34 +178,37 @@ function AuditTrail() {
       <div className="audit-summary">
         <AuditStat
           label="TOTAL EVENTS"
-          value="7"
+          value={`${events.length}`}
         />
 
         <AuditStat
           label="TOOLS CALLED"
-          value="6"
+          value={`${toolCount}`}
         />
 
         <AuditStat
           label="DECISIONS"
-          value="3"
+          value={`${decisionCount}`}
         />
 
         <AuditStat
           label="STATUS"
-          value="ACTIVE"
-          green
+          value={formatStatus(status)}
+          green={
+            status !== "FAILED" &&
+            status !== "BLOCKED"
+          }
         />
       </div>
 
       {/* TIMELINE */}
 
       <div className="audit-events">
-        {auditEvents.map((event, index) => (
-          <AuditEvent
+        {events.map((event, index) => (
+          <AuditEventRow
             key={`${event.time}-${index}`}
             event={event}
-            last={index === auditEvents.length - 1}
+            last={index === events.length - 1}
           />
         ))}
       </div>
@@ -204,11 +252,11 @@ function AuditStat({
   );
 }
 
-function AuditEvent({
+function AuditEventRow({
   event,
   last,
 }: {
-  event: AuditEvent;
+  event: AuditEventView;
   last: boolean;
 }) {
   const Icon = event.icon;
@@ -217,14 +265,12 @@ function AuditEvent({
     <div className="audit-event">
       <div className="audit-event-track">
         <div
-          className={
-            event.status === "success"
-              ? "audit-event-icon success"
-              : "audit-event-icon pending"
-          }
+          className={`audit-event-icon ${event.status}`}
         >
           {event.status === "success" ? (
             <Check size={11} />
+          ) : event.status === "failed" ? (
+            <XCircle size={12} />
           ) : (
             <Icon size={12} />
           )}
@@ -261,21 +307,196 @@ function AuditEvent({
             </span>
           )}
 
-          {event.status === "success" ? (
-            <span className="audit-status success-status">
+          <span
+            className={`audit-status ${event.status}-status`}
+          >
+            {event.status === "success" ? (
               <Check size={9} />
-              Verified
-            </span>
-          ) : (
-            <span className="audit-status pending-status">
+            ) : event.status === "failed" ? (
+              <XCircle size={9} />
+            ) : (
               <Clock3 size={9} />
-              Awaiting webhook
-            </span>
-          )}
+            )}
+            {getStatusLabel(event.status)}
+          </span>
         </div>
       </div>
     </div>
   );
+}
+
+function mapAuditEvent(
+  event: AgentAuditEvent
+): AuditEventView {
+  const type =
+    formatEventType(event.eventType);
+
+  return {
+    time: formatEventTime(
+      event.createdAt
+    ),
+    type,
+    title: getEventTitle(type),
+    description: event.message,
+    tool: getAuditTool(event),
+    status: mapAuditStatus(
+      event.status
+    ),
+    icon: getEventIcon(type),
+  };
+}
+
+function getAuditTool(
+  event: AgentAuditEvent
+) {
+  const metadataTool =
+    event.metadata?.tool;
+
+  if (typeof metadataTool === "string") {
+    return metadataTool;
+  }
+
+  const metadataEndpoint =
+    event.metadata?.endpoint;
+
+  if (
+    typeof metadataEndpoint ===
+    "string"
+  ) {
+    return metadataEndpoint;
+  }
+
+  return event.actor.toLowerCase();
+}
+
+function mapAuditStatus(
+  status: string
+): AuditStatus {
+  const normalized =
+    status.toLowerCase();
+
+  if (
+    normalized.includes("fail") ||
+    normalized.includes("block") ||
+    normalized.includes("error")
+  ) {
+    return "failed";
+  }
+
+  if (
+    normalized.includes("review")
+  ) {
+    return "review";
+  }
+
+  if (
+    normalized.includes("pending") ||
+    normalized.includes("await")
+  ) {
+    return "pending";
+  }
+
+  return "success";
+}
+
+function getStatusLabel(
+  status: AuditStatus
+) {
+  if (status === "success") {
+    return "Verified";
+  }
+
+  if (status === "failed") {
+    return "Stopped safely";
+  }
+
+  if (status === "review") {
+    return "Needs review";
+  }
+
+  return "Awaiting proof";
+}
+
+function getEventIcon(
+  type: string
+) {
+  if (type.includes("CATALOG")) {
+    return Search;
+  }
+
+  if (type.includes("DECISION")) {
+    return Sparkles;
+  }
+
+  if (type.includes("GROWTH")) {
+    return TrendingUp;
+  }
+
+  if (type.includes("POLICY")) {
+    return ShieldCheck;
+  }
+
+  if (
+    type.includes("CHECKOUT") ||
+    type.includes("PAYMENT")
+  ) {
+    return CreditCard;
+  }
+
+  if (type.includes("WEBHOOK")) {
+    return FileCheck2;
+  }
+
+  return Bot;
+}
+
+function getEventTitle(
+  type: string
+) {
+  return formatStatus(type);
+}
+
+function formatEventType(
+  type: string
+) {
+  return type
+    .replaceAll("-", "_")
+    .replaceAll(" ", "_")
+    .toUpperCase();
+}
+
+function formatStatus(
+  status: string
+) {
+  return status
+    .replaceAll("_", " ")
+    .toLowerCase()
+    .replace(
+      /\b\w/g,
+      (letter) =>
+        letter.toUpperCase()
+    );
+}
+
+function formatEventTime(
+  value: string
+) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  const pad = (part: number) =>
+    String(part).padStart(2, "0");
+
+  const millis = String(
+    date.getMilliseconds()
+  ).padStart(3, "0");
+
+  return `${pad(date.getHours())}:${pad(
+    date.getMinutes()
+  )}:${pad(date.getSeconds())}.${millis}`;
 }
 
 export default AuditTrail;

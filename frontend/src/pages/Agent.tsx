@@ -7,18 +7,67 @@ import {
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
+import * as React from "react";
 
 import "../styles/Agent.css";
 
 import AgentActivity from "../components/AgentActivity";
 import AuditTrail from "../components/AuditTrail";
 import ChatPanel from "../components/ChatPanel";
-import RecommendationCard from "../components/RecommendationCard";
+import CheckoutModal from "../components/CheckoutModal";
+
+import {
+  AgentProvider,
+  useAgentContext,
+} from "../context/AgentContext";
 
 function Agent() {
+  const customerId =
+    process.env.REACT_APP_CUSTOMER_ID ||
+    "demo-customer";
+
+  return (
+    <AgentProvider
+      customerId={customerId}
+    >
+      <AgentContent />
+    </AgentProvider>
+  );
+}
+
+function AgentContent() {
+  const {
+    status,
+    session,
+    decision,
+    cart,
+    lastAction,
+    isLoading,
+    error,
+    canExecute,
+    loadAuditTrail,
+  } = useAgentContext();
+
+  const handleOpenCheckout = () => {
+    if (!lastAction) {
+      return;
+    }
+
+    if (!canExecute) {
+      return;
+    }
+
+    window.dispatchEvent(
+      new CustomEvent("agent:open-checkout")
+    );
+  };
+
   return (
     <div className="agent-page">
-      {/* HEADER */}
+
+      {/* =================================================
+          HEADER
+      ================================================= */}
 
       <div className="agent-page-header">
         <div>
@@ -32,140 +81,135 @@ function Agent() {
             </div>
 
             <div>
-              <h1>AI Revenue Agent</h1>
+              <h1>
+                AI Revenue Agent
+              </h1>
 
               <p>
-                Your autonomous growth engine for intelligent
-                commerce.
+                Your autonomous growth engine for
+                intelligent commerce.
               </p>
             </div>
           </div>
         </div>
 
-        <div className="agent-live">
+        <div
+          className={
+            status === "BLOCKED" ||
+            status === "FAILED"
+              ? "agent-live danger"
+              : "agent-live"
+          }
+        >
           <span />
-          Agent Active
+
+          {formatAgentStatus(status)}
         </div>
       </div>
 
-      {/* MAIN */}
+      {/* =================================================
+          MAIN
+      ================================================= */}
 
       <div className="agent-layout">
-        {/* LEFT — INTERACTIVE CHAT */}
+
+        {/* LEFT */}
 
         <section className="conversation-panel">
           <ChatPanel />
-
-          {/* AI RECOMMENDATION */}
-
-          <div className="agent-recommendation-section">
-            <RecommendationCard
-              recommendation={{
-                productName:
-                  "Velocity Running Shoes",
-
-                description:
-                  "Lightweight daily running shoe",
-
-                price: 1299,
-
-                rating: 4.8,
-
-                reviews: "2,340",
-
-                matchScore: 94,
-
-                reason:
-                  "Customer requested running shoes under ₹1500. This product has the strongest rating, conversion rate and historical purchase affinity within the customer's budget.",
-
-                expectedAOV: 1498,
-
-                tag: "BEST MATCH",
-
-                crossSell: {
-                  name: "ProFit Running Socks",
-
-                  price: 199,
-
-                  reason:
-                    "68% of customers buying these shoes also purchase this accessory.",
-                },
-              }}
-
-              onSelect={() => {
-                console.log(
-                  "Recommendation selected"
-                );
-              }}
-
-              onAddCrossSell={() => {
-                console.log(
-                  "Cross-sell added"
-                );
-              }}
-            />
-          </div>
         </section>
 
-        {/* RIGHT SIDEBAR */}
+        {/* RIGHT */}
 
         <aside className="agent-sidebar">
-          {/* AGENT DECISION */}
+
+          {/* =================================================
+              DECISION
+          ================================================= */}
 
           <div className="agent-card decision-card">
+
             <div className="card-heading">
+
               <div className="card-icon purple">
                 <Sparkles size={17} />
               </div>
 
               <div>
-                <span>AGENT DECISION</span>
+                <span>
+                  AGENT DECISION
+                </span>
 
                 <strong>
-                  Personalized bundle
+                  {decision
+                    ? formatDecisionType(
+                        decision.type
+                      )
+                    : "Waiting for request"}
                 </strong>
               </div>
+
             </div>
 
             <div className="decision-box">
+
               <div>
-                <span>Predicted AOV</span>
+                <span>
+                  Predicted AOV
+                </span>
 
                 <strong>
-                  ₹1,498
+                  {decision?.cart
+                    ? formatCurrency(
+                        decision.cart.total
+                      )
+                    : "—"}
                 </strong>
               </div>
 
               <div>
-                <span>Confidence</span>
+                <span>
+                  Confidence
+                </span>
 
                 <strong>
-                  94%
+                  {decision
+                    ? `${decision.confidence}%`
+                    : "—"}
                 </strong>
               </div>
+
             </div>
 
             <div className="decision-reason">
+
               <strong>
                 Why this action?
               </strong>
 
               <p>
-                Customer has high purchase intent and the
-                recommended accessory has strong historical
-                affinity with this product.
+                {decision?.reasoning ??
+                  "The agent will explain its decision after processing the customer's request."}
               </p>
+
             </div>
+
           </div>
 
-          {/* AGENT ACTIVITY */}
+          {/* =================================================
+              ACTIVITY
+          ================================================= */}
 
           <AgentActivity />
 
-          {/* GUARDRAILS */}
+          {/* =================================================
+              GUARDRAILS
+          ================================================= */}
 
           <div className="agent-card guardrail-card">
+
             <div className="card-title-row">
+
               <div>
                 <span>
                   SAFETY & CONTROL
@@ -177,91 +221,254 @@ function Agent() {
               </div>
 
               <ShieldCheck size={17} />
+
             </div>
 
-            <Guardrail
-              text="Discount within merchant limit"
-            />
+            {decision?.guardrails?.length ? (
+              decision.guardrails.map(
+                (guardrail) => (
+                  <Guardrail
+                    key={guardrail.id}
+                    text={guardrail.name}
+                    status={
+                      guardrail.status
+                    }
+                  />
+                )
+              )
+            ) : (
+              <div className="guardrail-empty">
 
-            <Guardrail
-              text="Product currently in stock"
-            />
+                <ShieldCheck size={13} />
 
-            <Guardrail
-              text="Customer confirmation required"
-            />
+                <span>
+                  Waiting for agent decision
+                </span>
 
-            <Guardrail
-              text="Payment requires Razorpay checkout"
-            />
+              </div>
+            )}
+
           </div>
 
-          {/* CHECKOUT */}
+          {/* =================================================
+              CHECKOUT
+          ================================================= */}
 
           <div className="checkout-card">
+
             <div className="checkout-top">
+
               <div>
                 <span>
-                  READY TO CHECKOUT
+                  CHECKOUT STATUS
                 </span>
 
                 <strong>
-                  ₹1,498
+                  {cart
+                    ? formatCurrency(
+                        cart.total
+                      )
+                    : "—"}
                 </strong>
               </div>
 
               <CircleDollarSign size={23} />
+
             </div>
 
-            <div className="checkout-items">
-              <span>
-                Velocity Running Shoes
-              </span>
+            {cart?.items?.length ? (
 
-              <span>
-                ₹1,299
-              </span>
+              <div className="checkout-items">
 
-              <span>
-                ProFit Running Socks
-              </span>
+                {cart.items.map(
+                  (item) => (
+                    <div
+                      key={
+                        item.productId
+                      }
+                      className="checkout-item-row"
+                    >
 
-              <span>
-                ₹199
-              </span>
-            </div>
+                      <span>
+                        {item.productName}
+                        {" × "}
+                        {item.quantity}
+                      </span>
 
-            <button className="checkout-button">
+                      <span>
+                        {formatCurrency(
+                          item.totalPrice
+                        )}
+                      </span>
+
+                    </div>
+                  )
+                )}
+
+              </div>
+
+            ) : (
+
+              <div className="checkout-empty">
+                Cart will appear here after
+                the agent selects products.
+              </div>
+
+            )}
+
+            <button
+              className="checkout-button"
+              disabled={
+                !canExecute ||
+                isLoading ||
+                !cart
+              }
+              onClick={
+                handleOpenCheckout
+              }
+            >
+
               <CreditCard size={16} />
 
-              Create Razorpay Order
+              {canExecute
+                ? "Open secure checkout"
+                : status ===
+                  "AWAITING_CONFIRMATION"
+                ? "Customer confirmation required"
+                : "Authorization required"}
 
               <ChevronRight size={16} />
+
             </button>
+
+            {error && (
+              <div className="checkout-error">
+                {error.message}
+              </div>
+            )}
+
           </div>
+
         </aside>
+
       </div>
 
-      {/* AUDIT TRAIL */}
+      {/* =================================================
+          AUDIT
+      ================================================= */}
 
       <div className="agent-audit-section">
         <AuditTrail />
       </div>
+
+      {/* =================================================
+          CHECKOUT MODAL
+      ================================================= */}
+
+      <CheckoutController
+        sessionId={session?.id}
+        customerId={
+          process.env.REACT_APP_CUSTOMER_ID ||
+          "demo-customer"
+        }
+        cart={cart}
+        action={lastAction}
+        onSuccess={async () => {
+          await loadAuditTrail();
+        }}
+      />
+
     </div>
   );
 }
 
-/* GUARDRAIL */
+/* =========================================================
+   CHECKOUT CONTROLLER
+   ========================================================= */
+
+function CheckoutController({
+  sessionId,
+  customerId,
+  cart,
+  action,
+  onSuccess,
+}: {
+  sessionId?: string;
+  customerId: string;
+  cart: any;
+  action: any;
+  onSuccess: () => Promise<void>;
+}) {
+  const [open, setOpen] =
+    React.useState(false);
+
+  React.useEffect(() => {
+    const handler = () =>
+      setOpen(true);
+
+    window.addEventListener(
+      "agent:open-checkout",
+      handler
+    );
+
+    return () =>
+      window.removeEventListener(
+        "agent:open-checkout",
+        handler
+      );
+  }, []);
+
+  return (
+    <CheckoutModal
+      open={open}
+      sessionId={sessionId}
+      customerId={customerId}
+      cart={cart}
+      action={action}
+      onClose={() =>
+        setOpen(false)
+      }
+      onSuccess={async (
+        checkout
+      ) => {
+        await onSuccess();
+      }
+      }
+    />
+  );
+}
+
+/* =========================================================
+   GUARDRAIL
+   ========================================================= */
 
 function Guardrail({
   text,
+  status,
 }: {
   text: string;
+  status:
+    | "PASS"
+    | "BLOCKED"
+    | "REVIEW_REQUIRED";
 }) {
+  const isPass =
+    status === "PASS";
+
+  const isBlocked =
+    status === "BLOCKED";
+
   return (
-    <div className="guardrail">
+    <div
+      className={`guardrail ${status.toLowerCase()}`}
+    >
+
       <div>
-        <Check size={11} />
+        {isPass ? (
+          <Check size={11} />
+        ) : (
+          <ShieldCheck size={11} />
+        )}
       </div>
 
       <span>
@@ -269,10 +476,52 @@ function Guardrail({
       </span>
 
       <span className="guardrail-ok">
-        PASS
+        {isPass
+          ? "PASS"
+          : isBlocked
+          ? "BLOCKED"
+          : "REVIEW"}
       </span>
+
     </div>
   );
+}
+
+/* =========================================================
+   HELPERS
+   ========================================================= */
+
+function formatCurrency(
+  amount: number
+) {
+  return `₹${amount.toLocaleString(
+    "en-IN"
+  )}`;
+}
+
+function formatAgentStatus(
+  status: string
+) {
+  return status
+    .replaceAll("_", " ")
+    .toLowerCase()
+    .replace(
+      /\b\w/g,
+      (letter) =>
+        letter.toUpperCase()
+    );
+}
+
+function formatDecisionType(
+  type: string
+) {
+  return type
+    .replaceAll("_", " ")
+    .replace(
+      /\b\w/g,
+      (letter) =>
+        letter.toUpperCase()
+    );
 }
 
 export default Agent;

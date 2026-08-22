@@ -168,6 +168,18 @@
   border: 1px solid rgba(132, 100, 255, 0.15);
 }
 
+.audit-event-icon.review {
+  color: #f4b95f;
+  background: rgba(244, 185, 95, 0.08);
+  border: 1px solid rgba(244, 185, 95, 0.16);
+}
+
+.audit-event-icon.failed {
+  color: #ff6b7a;
+  background: rgba(255, 107, 122, 0.08);
+  border: 1px solid rgba(255, 107, 122, 0.16);
+}
+
 .audit-event-connector {
   position: absolute;
 
@@ -258,6 +270,16 @@
 .pending-status {
   color: #a38cff;
   background: rgba(132, 100, 255, 0.06);
+}
+
+.review-status {
+  color: #f4b95f;
+  background: rgba(244, 185, 95, 0.06);
+}
+
+.failed-status {
+  color: #ff6b7a;
+  background: rgba(255, 107, 122, 0.06);
 }
 
 /* FOOTER */

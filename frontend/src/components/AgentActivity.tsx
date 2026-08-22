@@ -1,235 +1,539 @@
 import {
-  Bot,
   Check,
-  ChevronRight,
-  Clock3,
+  CircleAlert,
   CreditCard,
-  Database,
   Search,
   ShieldCheck,
   Sparkles,
-  TrendingUp,
-  Zap,
+  UserCheck,
+  XCircle,
 } from "lucide-react";
+
 import "../styles/AgentActivity.css";
 
-type ActivityStatus = "done" | "running" | "waiting";
+import {
+  type ElementType,
+} from "react";
+
+import {
+  useAgentContext,
+} from "../context/AgentContext";
+
+type ActivityStatus =
+  | "WAITING"
+  | "ACTIVE"
+  | "DONE"
+  | "REVIEW"
+  | "BLOCKED";
 
 type Activity = {
-  id: number;
+  id: string;
   title: string;
   description: string;
-  type: string;
-  time: string;
+  icon: ElementType;
   status: ActivityStatus;
 };
 
-const initialActivities: Activity[] = [
-  {
-    id: 1,
-    title: "Customer intent received",
-    description: "Running shoes under ₹1500",
-    type: "INTENT",
-    time: "10:42:18",
-    status: "done",
-  },
-  {
-    id: 2,
-    title: "Catalog search completed",
-    description: "4 relevant products found",
-    type: "SEARCH",
-    time: "10:42:19",
-    status: "done",
-  },
-  {
-    id: 3,
-    title: "Purchase intent classified",
-    description: "High-intent customer · 94% confidence",
-    type: "AI",
-    time: "10:42:20",
-    status: "done",
-  },
-  {
-    id: 4,
-    title: "Cross-sell opportunity detected",
-    description: "Running Socks have strong product affinity",
-    type: "GROWTH",
-    time: "10:42:21",
-    status: "done",
-  },
-  {
-    id: 5,
-    title: "Merchant policy validation",
-    description: "Discount and inventory constraints checked",
-    type: "POLICY",
-    time: "10:42:21",
-    status: "done",
-  },
-  {
-    id: 6,
-    title: "Razorpay order preparation",
-    description: "Waiting for customer confirmation",
-    type: "PAYMENT",
-    time: "10:42:22",
-    status: "waiting",
-  },
-];
+function AgentActivity() {
+  const {
+    status,
+    intent,
+    decision,
+    lastAction,
+  } = useAgentContext();
 
-function AgentActivity({
-  activities = initialActivities,
-}: {
-  activities?: Activity[];
-}) {
+  const activities: Activity[] = [
+    {
+      id: "intent",
+
+      title:
+        "Understanding customer intent",
+
+      description:
+        intent
+          ? "Customer intent successfully extracted."
+          : "Waiting for customer request.",
+
+      icon: UserCheck,
+
+      status:
+        getStageStatus(
+          status,
+          "UNDERSTANDING"
+        ),
+    },
+
+    {
+      id: "catalog",
+
+      title:
+        "Searching product catalog",
+
+      description:
+        decision
+          ? "Relevant products identified from the merchant catalog."
+          : "Agent will search available products after understanding intent.",
+
+      icon: Search,
+
+      status:
+        getStageStatus(
+          status,
+          "SEARCHING"
+        ),
+    },
+
+    {
+      id: "decision",
+
+      title:
+        "Generating agent decision",
+
+      description:
+        decision
+          ? "Recommendation and purchase strategy generated."
+          : "Waiting for recommendation engine.",
+
+      icon: Sparkles,
+
+      status:
+        getStageStatus(
+          status,
+          "DECIDING"
+        ),
+    },
+
+    {
+      id: "guardrails",
+
+      title:
+        "Evaluating action guardrails",
+
+      description:
+        decision
+          ? `${decision.guardrails.length} policy checks evaluated.`
+          : "Spending, inventory and authorization policies will be checked.",
+
+      icon: ShieldCheck,
+
+      status:
+        getGuardrailStatus(
+          status,
+          decision
+        ),
+    },
+
+    {
+      id: "authorization",
+
+      title:
+        "Customer authorization",
+
+      description:
+        status === "AUTHORIZED"
+          ? "Customer action has been authorized."
+          : status ===
+            "AWAITING_CONFIRMATION"
+          ? "Waiting for explicit customer confirmation."
+          : "No financial action can execute without authorization.",
+
+      icon: UserCheck,
+
+      status:
+        status === "AUTHORIZED"
+          ? "DONE"
+          : status ===
+            "AWAITING_CONFIRMATION"
+          ? "ACTIVE"
+          : status === "BLOCKED"
+          ? "BLOCKED"
+          : "WAITING",
+    },
+
+    {
+      id: "checkout",
+
+      title:
+        "Secure checkout",
+
+      description:
+        lastAction?.status ===
+        "EXECUTED"
+          ? "Authorized checkout action executed."
+          : "Checkout remains locked until authorization is complete.",
+
+      icon: CreditCard,
+
+      status:
+        status === "CHECKOUT" ||
+        status === "COMPLETED"
+          ? "DONE"
+          : status === "BLOCKED"
+          ? "BLOCKED"
+          : "WAITING",
+    },
+  ];
+
   return (
-    <div className="agent-activity-card">
-      <div className="activity-header">
-        <div className="activity-heading">
-          <div className="activity-main-icon">
-            <Bot size={17} />
-          </div>
+    <div className="agent-card activity-card">
 
-          <div>
-            <span>AGENT ACTIVITY</span>
-            <strong>Decision Pipeline</strong>
-          </div>
-        </div>
+      {/* HEADER */}
 
-        <div className="activity-live">
-          <span />
-          LIVE
-        </div>
-      </div>
+      <div className="card-title-row">
 
-      <div className="activity-progress">
-        <div className="progress-info">
-          <span>Current task progress</span>
-          <strong>5 / 6</strong>
-        </div>
-
-        <div className="progress-track">
-          <div style={{ width: "83%" }} />
-        </div>
-      </div>
-
-      <div className="activity-timeline">
-        {activities.map((activity, index) => (
-          <ActivityItem
-            key={activity.id}
-            activity={activity}
-            last={index === activities.length - 1}
-          />
-        ))}
-      </div>
-
-      <div className="activity-footer">
         <div>
-          <Database size={12} />
-          <span>All events persisted to audit store</span>
-        </div>
 
-        <button>
-          View complete audit
-          <ChevronRight size={12} />
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function ActivityItem({
-  activity,
-  last,
-}: {
-  activity: Activity;
-  last: boolean;
-}) {
-  const Icon = getActivityIcon(activity.type);
-
-  return (
-    <div className="activity-item">
-      <div className="activity-track">
-        <div
-          className={
-            activity.status === "running"
-              ? "activity-status running"
-              : activity.status === "waiting"
-              ? "activity-status waiting"
-              : "activity-status done"
-          }
-        >
-          {activity.status === "done" ? (
-            <Check size={11} />
-          ) : activity.status === "waiting" ? (
-            <Clock3 size={11} />
-          ) : (
-            <Icon size={11} />
-          )}
-        </div>
-
-        {!last && <div className="activity-vertical-line" />}
-      </div>
-
-      <div className="activity-details">
-        <div className="activity-top">
-          <div>
-            <span className="activity-type">{activity.type}</span>
-            <strong>{activity.title}</strong>
-          </div>
-
-          <span className="activity-time">{activity.time}</span>
-        </div>
-
-        <p>{activity.description}</p>
-
-        <div className="activity-meta">
-          <span
-            className={
-              activity.status === "waiting"
-                ? "status waiting-text"
-                : "status"
-            }
-          >
-            {activity.status === "done"
-              ? "Completed"
-              : activity.status === "waiting"
-              ? "Awaiting confirmation"
-              : "Running"}
+          <span>
+            AGENT ACTIVITY
           </span>
 
-          {activity.type === "GROWTH" && (
-            <span className="impact">
-              <TrendingUp size={9} />
-              +₹199 AOV
-            </span>
-          )}
+          <strong>
+            Decision pipeline
+          </strong>
 
-          {activity.type === "PAYMENT" && (
-            <span className="tool">
-              <CreditCard size={9} />
-              Razorpay
-            </span>
-          )}
         </div>
+
+        <span
+          className={
+            status === "BLOCKED" ||
+            status === "FAILED"
+              ? "live-small danger"
+              : "live-small"
+          }
+        >
+          {status === "IDLE"
+            ? "READY"
+            : "LIVE"}
+        </span>
+
       </div>
+
+      {/* PIPELINE */}
+
+      <div className="activity-list">
+
+        {activities.map(
+          (activity, index) => (
+            <ActivityRow
+              key={
+                activity.id
+              }
+              activity={
+                activity
+              }
+              isLast={
+                index ===
+                activities.length - 1
+              }
+            />
+          )
+        )}
+
+      </div>
+
+      {/* CURRENT STATE */}
+
+      <div
+        className={`activity-current-state ${getStateClass(
+          status
+        )}`}
+      >
+
+        <span className="state-dot" />
+
+        <div>
+
+          <span>
+            CURRENT AGENT STATE
+          </span>
+
+          <strong>
+            {formatStatus(
+              status
+            )}
+          </strong>
+
+        </div>
+
+      </div>
+
     </div>
   );
 }
 
-function getActivityIcon(type: string) {
-  switch (type) {
-    case "SEARCH":
-      return Search;
-    case "GROWTH":
-      return TrendingUp;
-    case "POLICY":
-      return ShieldCheck;
-    case "PAYMENT":
-      return CreditCard;
-    case "AI":
-      return Sparkles;
-    default:
-      return Zap;
+/* =========================================================
+   ROW
+   ========================================================= */
+
+function ActivityRow({
+  activity,
+  isLast,
+}: {
+  activity: Activity;
+  isLast: boolean;
+}) {
+  const Icon =
+    activity.icon;
+
+  return (
+    <div className="activity">
+
+      <div className="activity-line">
+
+        <div
+          className={`activity-icon ${activity.status.toLowerCase()}`}
+        >
+
+          {activity.status ===
+          "DONE" ? (
+            <Check size={11} />
+          ) : activity.status ===
+            "BLOCKED" ? (
+            <XCircle size={11} />
+          ) : activity.status ===
+            "REVIEW" ? (
+            <CircleAlert size={11} />
+          ) : (
+            <Icon size={12} />
+          )}
+
+        </div>
+
+        {!isLast && (
+          <div
+            className={`activity-connector ${
+              activity.status ===
+              "DONE"
+                ? "completed"
+                : ""
+            }`}
+          />
+        )}
+
+      </div>
+
+      <div className="activity-content">
+
+        <div className="activity-title-row">
+
+          <strong>
+            {activity.title}
+          </strong>
+
+          <ActivityBadge
+            status={
+              activity.status
+            }
+          />
+
+        </div>
+
+        <p>
+          {activity.description}
+        </p>
+
+      </div>
+
+    </div>
+  );
+}
+
+/* =========================================================
+   BADGE
+   ========================================================= */
+
+function ActivityBadge({
+  status,
+}: {
+  status: ActivityStatus;
+}) {
+  if (status === "DONE") {
+    return (
+      <span className="activity-badge done">
+        COMPLETE
+      </span>
+    );
   }
+
+  if (status === "ACTIVE") {
+    return (
+      <span className="activity-badge active">
+        RUNNING
+      </span>
+    );
+  }
+
+  if (status === "REVIEW") {
+    return (
+      <span className="activity-badge review">
+        REVIEW
+      </span>
+    );
+  }
+
+  if (status === "BLOCKED") {
+    return (
+      <span className="activity-badge blocked">
+        BLOCKED
+      </span>
+    );
+  }
+
+  return (
+    <span className="activity-badge waiting">
+      WAITING
+    </span>
+  );
+}
+
+/* =========================================================
+   STAGE STATUS
+   ========================================================= */
+
+function getStageStatus(
+  current: string,
+  stage: string
+): ActivityStatus {
+  const order = [
+    "UNDERSTANDING",
+    "SEARCHING",
+    "DECIDING",
+    "GUARDRAIL_CHECK",
+    "AWAITING_CONFIRMATION",
+    "AUTHORIZED",
+    "CHECKOUT",
+    "COMPLETED",
+  ];
+
+  const currentIndex =
+    order.indexOf(current);
+
+  const stageIndex =
+    order.indexOf(stage);
+
+  if (current === "IDLE") {
+    return "WAITING";
+  }
+
+  if (current === "FAILED") {
+    return "BLOCKED";
+  }
+
+  if (
+    current ===
+    "REVIEW_REQUIRED"
+  ) {
+    return stageIndex <= 3
+      ? "DONE"
+      : "REVIEW";
+  }
+
+  if (current === "BLOCKED") {
+    return stageIndex <= 3
+      ? "DONE"
+      : "BLOCKED";
+  }
+
+  if (
+    currentIndex >
+    stageIndex
+  ) {
+    return "DONE";
+  }
+
+  if (
+    currentIndex ===
+    stageIndex
+  ) {
+    return "ACTIVE";
+  }
+
+  return "WAITING";
+}
+
+/* =========================================================
+   GUARDRAIL STATUS
+   ========================================================= */
+
+function getGuardrailStatus(
+  status: string,
+  decision: any
+): ActivityStatus {
+  if (!decision) {
+    return "WAITING";
+  }
+
+  if (status === "BLOCKED") {
+    return "BLOCKED";
+  }
+
+  if (
+    status ===
+    "REVIEW_REQUIRED"
+  ) {
+    return "REVIEW";
+  }
+
+  if (
+    status ===
+      "AWAITING_CONFIRMATION" ||
+    status === "AUTHORIZED" ||
+    status === "CHECKOUT" ||
+    status === "COMPLETED"
+  ) {
+    return "DONE";
+  }
+
+  if (
+    status ===
+    "GUARDRAIL_CHECK"
+  ) {
+    return "ACTIVE";
+  }
+
+  return "WAITING";
+}
+
+/* =========================================================
+   CURRENT STATE
+   ========================================================= */
+
+function getStateClass(
+  status: string
+) {
+  if (status === "BLOCKED") {
+    return "danger";
+  }
+
+  if (
+    status ===
+    "REVIEW_REQUIRED"
+  ) {
+    return "review";
+  }
+
+  if (status === "COMPLETED") {
+    return "success";
+  }
+
+  return "active";
+}
+
+/* =========================================================
+   FORMAT
+   ========================================================= */
+
+function formatStatus(
+  status: string
+) {
+  return status
+    .replaceAll("_", " ")
+    .toLowerCase()
+    .replace(
+      /\b\w/g,
+      (letter) =>
+        letter.toUpperCase()
+    );
 }
 
 export default AgentActivity;

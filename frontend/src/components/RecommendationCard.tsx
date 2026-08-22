@@ -7,7 +7,7 @@ import {
   Sparkles,
   TrendingUp,
 } from "lucide-react";
-import "../styles/RecommendationCard.css";
+import "../styles/RecommendationCard.css"
 
 export type RecommendationData = {
   productName: string;

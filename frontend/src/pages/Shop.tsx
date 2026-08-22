@@ -315,6 +315,8 @@ function Shop() {
 
       <CheckoutModal
         open={checkoutOpen}
+        cart={null}
+        action={null}
         onClose={() => setCheckoutOpen(false)}
       />
     </div>
