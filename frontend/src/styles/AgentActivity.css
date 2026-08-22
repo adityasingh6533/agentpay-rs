@@ -1,0 +1,285 @@
+.agent-activity-card {
+  border: 1px solid #1d2029;
+  border-radius: 13px;
+  background: linear-gradient(145deg, #111219, #0e0f14);
+  padding: 17px;
+}
+
+.activity-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.activity-heading {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.activity-main-icon {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  color: #a38cff;
+  background: rgba(132, 100, 255, 0.1);
+}
+
+.activity-heading > div:last-child {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.activity-heading span {
+  color: #626673;
+  font-size: 7px;
+  font-weight: 750;
+  letter-spacing: 0.9px;
+}
+
+.activity-heading strong {
+  font-size: 10px;
+}
+
+.activity-live {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #4ed39a;
+  font-size: 7px;
+  font-weight: 800;
+  letter-spacing: 0.7px;
+}
+
+.activity-live > span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #4ed39a;
+  box-shadow: 0 0 7px rgba(78, 211, 154, 0.8);
+}
+
+.activity-progress {
+  margin-top: 16px;
+  padding: 10px;
+  border: 1px solid #20232c;
+  border-radius: 8px;
+  background: #13141b;
+}
+
+.progress-info {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 7px;
+}
+
+.progress-info span {
+  color: #656976;
+  font-size: 7px;
+}
+
+.progress-info strong {
+  color: #9c83ff;
+  font-size: 7px;
+}
+
+.progress-track {
+  height: 4px;
+  overflow: hidden;
+  border-radius: 10px;
+  background: #252731;
+}
+
+.progress-track > div {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #6f54e8, #9a83ff);
+}
+
+.activity-timeline {
+  margin-top: 17px;
+}
+
+.activity-item {
+  display: flex;
+  gap: 10px;
+}
+
+.activity-track {
+  width: 27px;
+  position: relative;
+  display: flex;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.activity-status {
+  width: 27px;
+  height: 27px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  z-index: 2;
+}
+
+.activity-status.done {
+  color: #4ed39a;
+  background: rgba(78, 211, 154, 0.07);
+  border: 1px solid rgba(78, 211, 154, 0.12);
+}
+
+.activity-status.waiting {
+  color: #a38cff;
+  background: rgba(132, 100, 255, 0.08);
+  border: 1px solid rgba(132, 100, 255, 0.15);
+}
+
+.activity-status.running {
+  color: #e7b15f;
+  background: rgba(231, 177, 95, 0.08);
+  border: 1px solid rgba(231, 177, 95, 0.15);
+  animation: activityPulse 1.5s infinite;
+}
+
+@keyframes activityPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(231, 177, 95, 0.2);
+  }
+
+  70% {
+    box-shadow: 0 0 0 7px rgba(231, 177, 95, 0);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 rgba(231, 177, 95, 0);
+  }
+}
+
+.activity-vertical-line {
+  position: absolute;
+  top: 27px;
+  bottom: -1px;
+  width: 1px;
+  background: #252832;
+}
+
+.activity-details {
+  flex: 1;
+  padding-bottom: 17px;
+}
+
+.activity-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.activity-top > div {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.activity-type {
+  color: #927aff;
+  font-size: 6px;
+  font-weight: 800;
+  letter-spacing: 0.8px;
+}
+
+.activity-top strong {
+  color: #afb2bd;
+  font-size: 9px;
+}
+
+.activity-time {
+  color: #4e525f;
+  font-size: 7px;
+}
+
+.activity-details > p {
+  color: #666a77;
+  font-size: 8px;
+  line-height: 1.45;
+  margin: 5px 0 6px;
+}
+
+.activity-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.status,
+.impact,
+.tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  font-size: 6px;
+}
+
+.status {
+  color: #4ed39a;
+  background: rgba(78, 211, 154, 0.05);
+}
+
+.waiting-text {
+  color: #a38cff;
+  background: rgba(132, 100, 255, 0.06);
+}
+
+.impact {
+  color: #4ed39a;
+  background: rgba(78, 211, 154, 0.05);
+}
+
+.tool {
+  color: #747885;
+  background: #171820;
+}
+
+.activity-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 2px;
+  padding-top: 12px;
+  border-top: 1px solid #1c1e26;
+}
+
+.activity-footer > div {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #505460;
+  font-size: 7px;
+}
+
+.activity-footer button {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  border: 0;
+  background: transparent;
+  color: #8e76f7;
+  font-size: 7px;
+}
+
+@media (max-width: 600px) {
+  .activity-top {
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .activity-footer {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+}

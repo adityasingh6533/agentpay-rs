@@ -1,0 +1,317 @@
+.audit-trail-card {
+  border: 1px solid #1e212a;
+  border-radius: 13px;
+  background: linear-gradient(145deg, #111219, #0e0f14);
+  padding: 17px;
+}
+
+.audit-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.audit-heading {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.audit-main-icon {
+  width: 32px;
+  height: 32px;
+
+  display: grid;
+  place-items: center;
+
+  border-radius: 8px;
+
+  color: #a38cff;
+  background: rgba(132, 100, 255, 0.1);
+}
+
+.audit-heading > div:last-child {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.audit-heading span {
+  color: #626673;
+  font-size: 7px;
+  letter-spacing: 0.9px;
+  font-weight: 750;
+}
+
+.audit-heading strong {
+  font-size: 10px;
+}
+
+.audit-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.audit-secure {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+
+  padding: 4px 6px;
+
+  border-radius: 4px;
+
+  color: #4ed39a;
+  background: rgba(78, 211, 154, 0.05);
+
+  font-size: 6px;
+  font-weight: 800;
+}
+
+.audit-header-actions button {
+  width: 27px;
+  height: 27px;
+
+  display: grid;
+  place-items: center;
+
+  border: 1px solid #282b34;
+  border-radius: 6px;
+
+  color: #6c707c;
+  background: #15161d;
+}
+
+/* SUMMARY */
+
+.audit-summary {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 7px;
+
+  margin-top: 15px;
+}
+
+.audit-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+
+  padding: 9px;
+
+  border: 1px solid #20232c;
+  border-radius: 7px;
+
+  background: #13141b;
+}
+
+.audit-stat span {
+  color: #555966;
+  font-size: 6px;
+  letter-spacing: 0.7px;
+}
+
+.audit-stat strong {
+  color: #a7aab4;
+  font-size: 11px;
+}
+
+.audit-green {
+  color: #4ed39a !important;
+}
+
+/* EVENTS */
+
+.audit-events {
+  margin-top: 18px;
+}
+
+.audit-event {
+  display: flex;
+  gap: 10px;
+}
+
+.audit-event-track {
+  width: 28px;
+
+  position: relative;
+
+  display: flex;
+  justify-content: center;
+
+  flex-shrink: 0;
+}
+
+.audit-event-icon {
+  width: 28px;
+  height: 28px;
+
+  display: grid;
+  place-items: center;
+
+  position: relative;
+  z-index: 2;
+
+  border-radius: 8px;
+}
+
+.audit-event-icon.success {
+  color: #4ed39a;
+  background: rgba(78, 211, 154, 0.07);
+  border: 1px solid rgba(78, 211, 154, 0.12);
+}
+
+.audit-event-icon.pending {
+  color: #a38cff;
+  background: rgba(132, 100, 255, 0.08);
+  border: 1px solid rgba(132, 100, 255, 0.15);
+}
+
+.audit-event-connector {
+  position: absolute;
+
+  top: 28px;
+  bottom: -1px;
+
+  width: 1px;
+
+  background: #272a33;
+}
+
+.audit-event-content {
+  flex: 1;
+  padding-bottom: 17px;
+}
+
+.audit-event-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.audit-event-top > div {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.audit-event-type {
+  color: #927aff;
+  font-size: 6px;
+  letter-spacing: 0.8px;
+  font-weight: 800;
+}
+
+.audit-event-top strong {
+  color: #afb2bd;
+  font-size: 9px;
+}
+
+.audit-event-time {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+
+  color: #4f535f;
+  font-family: monospace;
+  font-size: 6px;
+}
+
+.audit-event-content > p {
+  color: #666a77;
+  font-size: 8px;
+  line-height: 1.5;
+
+  margin: 5px 0 7px;
+}
+
+.audit-event-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.audit-tool,
+.audit-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+
+  padding: 4px 6px;
+
+  border-radius: 4px;
+
+  font-size: 6px;
+}
+
+.audit-tool {
+  color: #777b88;
+  background: #171820;
+}
+
+.success-status {
+  color: #4ed39a;
+  background: rgba(78, 211, 154, 0.05);
+}
+
+.pending-status {
+  color: #a38cff;
+  background: rgba(132, 100, 255, 0.06);
+}
+
+/* FOOTER */
+
+.audit-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+
+  padding-top: 12px;
+
+  border-top: 1px solid #1d2028;
+}
+
+.audit-footer > div {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+
+  color: #505460;
+  font-size: 7px;
+}
+
+.audit-footer > div svg {
+  color: #4ed39a;
+}
+
+.audit-footer button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+
+  border: 0;
+  background: transparent;
+
+  color: #9078f7;
+  font-size: 7px;
+}
+
+/* RESPONSIVE */
+
+@media (max-width: 650px) {
+  .audit-summary {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .audit-event-top {
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .audit-footer {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+}
