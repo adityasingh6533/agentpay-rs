@@ -1,299 +1,484 @@
 import {
+  AlertCircle,
   ArrowUpRight,
   Bot,
   ChevronDown,
-  MoreHorizontal,
+  Edit3,
+  Filter,
   Package,
   Plus,
   Search,
   Sparkles,
-  TrendingDown,
   TrendingUp,
-  Users,
+  X,
   Zap,
 } from "lucide-react";
-import "../styles/Catalog.css";
+import { useMemo, useState } from "react";
 
-const products = [
+import "../styles/Catalog.css";
+import ProductCard from "../components/ProductCard";
+
+type Product = {
+  id: number;
+  name: string;
+  category: string;
+  description: string;
+  price: number;
+  rating: number;
+  reviews: string;
+  stock: number;
+  conversion: number;
+  crossSell: "HIGH" | "MEDIUM" | "LOW";
+  status: "HIGH" | "MEDIUM" | "LOW";
+  tag?: string;
+  aiScore: number;
+};
+
+const products: Product[] = [
   {
+    id: 1,
     name: "Velocity Running Shoes",
-    sku: "VR-SHOE-001",
-    category: "Footwear",
-    price: "₹1,299",
-    stock: 84,
-    revenue: "₹48,920",
-    conversion: "8.9%",
-    change: "+24.2%",
-    status: "Strong",
+    category: "Running",
+    description: "Lightweight daily running shoe",
+    price: 1299,
+    rating: 4.8,
+    reviews: "2,340",
+    stock: 42,
+    conversion: 8.7,
+    crossSell: "HIGH",
+    status: "HIGH",
+    tag: "TOP SELLER",
+    aiScore: 94,
   },
   {
-    name: "ProFit Training Socks",
-    sku: "PF-SOCK-021",
+    id: 2,
+    name: "ProFit Running Socks",
     category: "Accessories",
-    price: "₹199",
-    stock: 142,
-    revenue: "₹21,480",
-    conversion: "12.4%",
-    change: "+18.7%",
-    status: "Strong",
+    description: "Performance socks for daily runs",
+    price: 199,
+    rating: 4.7,
+    reviews: "1,820",
+    stock: 86,
+    conversion: 7.4,
+    crossSell: "HIGH",
+    status: "HIGH",
+    tag: "AI PICK",
+    aiScore: 91,
   },
   {
+    id: 3,
     name: "Aero Sports Jacket",
-    sku: "AS-JKT-014",
-    category: "Apparel",
-    price: "₹1,899",
-    stock: 37,
-    revenue: "₹18,920",
-    conversion: "6.2%",
-    change: "+12.1%",
-    status: "Growing",
+    category: "Sportswear",
+    description: "Breathable performance layer",
+    price: 1899,
+    rating: 4.7,
+    reviews: "840",
+    stock: 18,
+    conversion: 5.8,
+    crossSell: "MEDIUM",
+    status: "MEDIUM",
+    aiScore: 78,
   },
   {
+    id: 4,
     name: "FlexRun Sports Shorts",
-    sku: "FR-SRT-009",
-    category: "Apparel",
-    price: "₹899",
-    stock: 61,
-    revenue: "₹12,640",
-    conversion: "4.1%",
-    change: "-8.4%",
-    status: "Opportunity",
+    category: "Sportswear",
+    description: "Flexible training shorts",
+    price: 899,
+    rating: 4.6,
+    reviews: "1,120",
+    stock: 31,
+    conversion: 6.9,
+    crossSell: "MEDIUM",
+    status: "MEDIUM",
+    aiScore: 76,
   },
   {
-    name: "HydroMax Sports Bottle",
-    sku: "HM-BTL-004",
-    category: "Accessories",
-    price: "₹349",
-    stock: 218,
-    revenue: "₹8,940",
-    conversion: "3.7%",
-    change: "-3.2%",
-    status: "Opportunity",
+    id: 5,
+    name: "Sprint Performance Tee",
+    category: "Sportswear",
+    description: "Lightweight training performance tee",
+    price: 699,
+    rating: 4.5,
+    reviews: "670",
+    stock: 7,
+    conversion: 3.2,
+    crossSell: "LOW",
+    status: "LOW",
+    aiScore: 54,
   },
 ];
 
 function Catalog() {
+  const [search, setSearch] = useState("");
+  const [category, setCategory] = useState("All");
+  const [showFilters, setShowFilters] = useState(false);
+  const [aiOnly, setAiOnly] = useState(false);
+
+  const filteredProducts = useMemo(() => {
+    return products.filter((product) => {
+      const matchesSearch = product.name
+        .toLowerCase()
+        .includes(search.toLowerCase());
+
+      const matchesCategory =
+        category === "All" ||
+        product.category === category;
+
+      const matchesAI =
+        !aiOnly || product.crossSell === "HIGH";
+
+      return (
+        matchesSearch &&
+        matchesCategory &&
+        matchesAI
+      );
+    });
+  }, [search, category, aiOnly]);
+
+  const aiProducts = products
+    .filter((product) => product.aiScore >= 75)
+    .slice(0, 3);
+
   return (
     <div className="catalog-page">
       {/* HEADER */}
 
       <div className="catalog-header">
         <div>
-          <div className="eyebrow">MERCHANT CATALOG</div>
-          <h1>Product Intelligence</h1>
-          <p>
-            Understand product performance and let AI find your next growth
-            opportunity.
-          </p>
+          <div className="catalog-eyebrow">
+            MERCHANT CATALOG
+          </div>
+
+          <div className="catalog-title-row">
+            <div>
+              <h1>Product Catalog</h1>
+
+              <p>
+                Manage products and optimize them for AI buyers.
+              </p>
+            </div>
+
+            <button className="add-product-button">
+              <Plus size={14} />
+              Add product
+            </button>
+          </div>
         </div>
-
-        <button className="add-product">
-          <Plus size={16} />
-          Add Product
-        </button>
-      </div>
-
-      {/* KPI */}
-
-      <div className="catalog-stats">
-        <Metric
-          icon={<Package size={18} />}
-          label="Total Products"
-          value="128"
-          sub="+8 this month"
-        />
-
-        <Metric
-          icon={<TrendingUp size={18} />}
-          label="Catalog Revenue"
-          value="₹1.84L"
-          sub="+18.4% this month"
-        />
-
-        <Metric
-          icon={<Users size={18} />}
-          label="Avg. Conversion"
-          value="7.8%"
-          sub="+2.1% this month"
-        />
-
-        <Metric
-          icon={<Sparkles size={18} />}
-          label="AI Opportunities"
-          value="12"
-          sub="3 high priority"
-        />
       </div>
 
       {/* AI INSIGHT */}
 
       <div className="catalog-ai-banner">
-        <div className="ai-banner-icon">
-          <Bot size={21} />
+        <div className="catalog-ai-icon">
+          <Bot size={18} />
         </div>
 
-        <div className="ai-banner-content">
-          <div className="ai-banner-title">
-            <span>AI GROWTH INSIGHT</span>
-            <span className="priority">HIGH PRIORITY</span>
+        <div className="catalog-ai-content">
+          <div>
+            <span>AI CATALOG INSIGHT</span>
+
+            <strong>
+              3 products have growth opportunities
+            </strong>
           </div>
 
-          <h3>FlexRun Sports Shorts have an untapped revenue opportunity.</h3>
-
           <p>
-            The product receives strong traffic but converts at only 4.1%.
-            Customers who purchase Velocity Running Shoes frequently buy
-            these shorts too.
+            Your running category has strong demand.
+            Optimizing cross-sells could increase average
+            order value by an estimated 12–18%.
           </p>
         </div>
 
-        <div className="ai-banner-action">
-          <div>
-            <span>Potential uplift</span>
-            <strong>+₹8,400/mo</strong>
-          </div>
+        <button>
+          Review opportunities
+          <ArrowUpRight size={13} />
+        </button>
+      </div>
 
-          <button>
-            Review with Agent
-            <ArrowUpRight size={14} />
-          </button>
-        </div>
+      {/* STATS */}
+
+      <div className="catalog-stats">
+        <CatalogStat
+          label="TOTAL PRODUCTS"
+          value="248"
+          icon={<Package size={16} />}
+        />
+
+        <CatalogStat
+          label="IN STOCK"
+          value="231"
+          icon={<Zap size={16} />}
+          green
+        />
+
+        <CatalogStat
+          label="AI OPTIMIZED"
+          value="184"
+          icon={<Sparkles size={16} />}
+        />
+
+        <CatalogStat
+          label="GROWTH OPPORTUNITIES"
+          value="12"
+          icon={<TrendingUp size={16} />}
+        />
       </div>
 
       {/* TOOLBAR */}
 
       <div className="catalog-toolbar">
-        <div className="search-box">
-          <Search size={16} />
-          <input placeholder="Search products..." />
+        <div className="catalog-search">
+          <Search size={14} />
+
+          <input
+            value={search}
+            onChange={(e) =>
+              setSearch(e.target.value)
+            }
+            placeholder="Search products..."
+          />
+
+          {search && (
+            <button
+              onClick={() => setSearch("")}
+            >
+              <X size={12} />
+            </button>
+          )}
         </div>
 
-        <button className="filter-button">
-          All Categories
-          <ChevronDown size={14} />
-        </button>
+        <div className="catalog-toolbar-right">
+          <div className="category-select">
+            <span>Category</span>
 
-        <button className="filter-button">
-          Performance
-          <ChevronDown size={14} />
-        </button>
+            <select
+              value={category}
+              onChange={(e) =>
+                setCategory(e.target.value)
+              }
+            >
+              <option>All</option>
+              <option>Running</option>
+              <option>Accessories</option>
+              <option>Sportswear</option>
+            </select>
+
+            <ChevronDown size={12} />
+          </div>
+
+          <button
+            className={
+              aiOnly
+                ? "filter-button active"
+                : "filter-button"
+            }
+            onClick={() =>
+              setAiOnly((value) => !value)
+            }
+          >
+            <Sparkles size={13} />
+            AI Opportunities
+          </button>
+
+          <button
+            className={
+              showFilters
+                ? "filter-button active"
+                : "filter-button"
+            }
+            onClick={() =>
+              setShowFilters((value) => !value)
+            }
+          >
+            <Filter size={13} />
+            Filters
+          </button>
+        </div>
       </div>
+
+      {/* FILTER PANEL */}
+
+      {showFilters && (
+        <div className="catalog-filter-panel">
+          <span>AI opportunity</span>
+
+          <button
+            onClick={() => {
+              setAiOnly(true);
+              setShowFilters(false);
+            }}
+          >
+            High
+          </button>
+
+          <button>Medium</button>
+          <button>Low</button>
+
+          <div className="filter-spacer" />
+
+          <button
+            className="clear-filter"
+            onClick={() =>
+              setShowFilters(false)
+            }
+          >
+            Close
+          </button>
+        </div>
+      )}
 
       {/* TABLE */}
 
-      <div className="product-table">
-        <div className="table-head">
-          <span>PRODUCT</span>
-          <span>PRICE</span>
-          <span>STOCK</span>
-          <span>REVENUE</span>
-          <span>CONVERSION</span>
-          <span>PERFORMANCE</span>
-          <span />
+      <div className="catalog-table-card">
+        <div className="catalog-table-header">
+          <div>
+            <span>PRODUCTS</span>
+
+            <strong>
+              {filteredProducts.length} products
+            </strong>
+          </div>
+
+          <span className="catalog-sort">
+            Sorted by AI opportunity
+            <ChevronDown size={11} />
+          </span>
         </div>
 
-        {products.map((product) => (
-          <ProductRow key={product.sku} product={product} />
-        ))}
+        <div className="catalog-table">
+          <div className="catalog-table-row catalog-table-head">
+            <span>PRODUCT</span>
+            <span>PRICE</span>
+            <span>STOCK</span>
+            <span>CONVERSION</span>
+            <span>AI SIGNAL</span>
+            <span>ACTION</span>
+          </div>
+
+          {filteredProducts.map((product) => (
+            <ProductRow
+              key={product.id}
+              product={product}
+            />
+          ))}
+
+          {filteredProducts.length === 0 && (
+            <div className="catalog-empty">
+              <Search size={22} />
+
+              <strong>
+                No products found
+              </strong>
+
+              <span>
+                Try a different product name or category.
+              </span>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* AI RECOMMENDATIONS */}
+      {/* AI RECOMMENDATION PREVIEW */}
 
-      <div className="catalog-bottom">
-        <div className="catalog-panel">
-          <div className="panel-heading">
-            <div className="heading-icon purple">
-              <Sparkles size={16} />
-            </div>
+      <div className="catalog-preview-section">
+        <div className="catalog-preview-header">
+          <div>
+            <span>AI PRODUCT INTELLIGENCE</span>
 
-            <div>
-              <span>AGENT RECOMMENDATIONS</span>
-              <strong>Actions that can grow revenue</strong>
-            </div>
+            <h2>
+              Products your agent can recommend
+            </h2>
+
+            <p>
+              These products have the strongest AI
+              recommendation signals.
+            </p>
           </div>
 
-          <Recommendation
-            icon={<Zap size={15} />}
-            title="Create a shoe + socks bundle"
-            description="Strong purchase affinity detected between Velocity Shoes and ProFit Socks."
-            impact="+₹5,200/mo"
-          />
-
-          <Recommendation
-            icon={<TrendingUp size={15} />}
-            title="Promote Aero Sports Jacket"
-            description="High-margin product with increasing conversion over the last 7 days."
-            impact="+₹3,100/mo"
-          />
-
-          <Recommendation
-            icon={<Users size={15} />}
-            title="Cross-sell Sports Shorts"
-            description="Customers buying running shoes are 3.2× more likely to buy these shorts."
-            impact="+₹8,400/mo"
-          />
-        </div>
-
-        <div className="catalog-panel opportunity-panel">
-          <div className="panel-heading">
-            <div className="heading-icon green">
-              <TrendingUp size={16} />
-            </div>
-
-            <div>
-              <span>CATALOG HEALTH</span>
-              <strong>Overall performance</strong>
-            </div>
-          </div>
-
-          <div className="health-score">
-            <div>
-              <strong>82</strong>
-              <span>/100</span>
-            </div>
-
-            <div className="score-label">
-              <span>Excellent</span>
-              <p>Your catalog is performing above average.</p>
-            </div>
-          </div>
-
-          <div className="health-bar">
-            <div />
-          </div>
-
-          <div className="health-items">
-            <Health label="Conversion" value="Good" positive />
-            <Health label="Inventory" value="Good" positive />
-            <Health label="Cross-sell" value="Needs attention" />
-            <Health label="Pricing" value="Good" positive />
+          <div className="preview-ai-status">
+            <Sparkles size={11} />
+            Agent Ready
           </div>
         </div>
+
+        <div className="catalog-product-preview-grid">
+          {aiProducts.map((product) => (
+            <ProductCard
+              key={product.id}
+              product={product}
+              variant="catalog"
+              showAI
+              showStock
+              onAdd={(selectedProduct) => {
+                console.log(
+                  "Product selected:",
+                  selectedProduct.name
+                );
+              }}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* AI OPPORTUNITY */}
+
+      <div className="catalog-opportunity">
+        <div className="opportunity-icon">
+          <TrendingUp size={17} />
+        </div>
+
+        <div>
+          <span>AI GROWTH OPPORTUNITY</span>
+
+          <strong>
+            Velocity Running Shoes → ProFit Running Socks
+          </strong>
+
+          <p>
+            68% of customers buying this shoe also purchase
+            the socks. Your agent can automatically surface
+            this recommendation during checkout.
+          </p>
+        </div>
+
+        <button>
+          Configure
+          <ChevronDown size={12} />
+        </button>
       </div>
     </div>
   );
 }
 
-function Metric({
-  icon,
+function CatalogStat({
   label,
   value,
-  sub,
+  icon,
+  green = false,
 }: {
-  icon: React.ReactNode;
   label: string;
   value: string;
-  sub: string;
+  icon: React.ReactNode;
+  green?: boolean;
 }) {
   return (
     <div className="catalog-stat">
-      <div className="catalog-stat-top">
-        <span>{label}</span>
-        <div>{icon}</div>
+      <div className="catalog-stat-icon">
+        {icon}
       </div>
 
-      <strong>{value}</strong>
-      <small>{sub}</small>
+      <div>
+        <span>{label}</span>
+
+        <strong
+          className={
+            green ? "catalog-green" : ""
+          }
+        >
+          {value}
+        </strong>
+      </div>
     </div>
   );
 }
@@ -301,119 +486,110 @@ function Metric({
 function ProductRow({
   product,
 }: {
-  product: (typeof products)[number];
+  product: Product;
 }) {
-  const opportunity = product.status === "Opportunity";
-
   return (
-    <div className="product-row">
-      <div className="product-name">
-        <div className="product-thumb">
-          <Package size={17} />
+    <div className="catalog-table-row">
+      {/* PRODUCT */}
+
+      <div className="catalog-product">
+        <div className="catalog-product-image">
+          <Package size={18} />
         </div>
 
         <div>
           <strong>{product.name}</strong>
+
           <span>
-            {product.sku} · {product.category}
+            {product.category}
+
+            {product.tag && (
+              <em>{product.tag}</em>
+            )}
           </span>
         </div>
       </div>
 
-      <strong className="price">{product.price}</strong>
+      {/* PRICE */}
 
-      <div
-        className={
-          product.stock < 50 ? "stock low-stock" : "stock"
-        }
-      >
-        {product.stock}
+      <div className="catalog-price">
+        ₹{product.price.toLocaleString("en-IN")}
       </div>
 
-      <strong className="revenue">{product.revenue}</strong>
+      {/* STOCK */}
 
-      <div className="conversion">
-        <strong>{product.conversion}</strong>
-
-        {opportunity ? (
-          <TrendingDown size={12} />
-        ) : (
-          <TrendingUp size={12} />
-        )}
-      </div>
-
-      <div>
+      <div className="catalog-stock">
         <span
           className={
-            opportunity
-              ? "performance opportunity"
-              : "performance"
+            product.stock < 10
+              ? "stock-dot warning"
+              : "stock-dot"
           }
+        />
+
+        <div>
+          <strong>{product.stock}</strong>
+
+          <span>
+            {product.stock < 10
+              ? "Low stock"
+              : "In stock"}
+          </span>
+        </div>
+      </div>
+
+      {/* CONVERSION */}
+
+      <div className="catalog-conversion">
+        <strong>
+          {product.conversion}%
+        </strong>
+
+        <div className="conversion-bar">
+          <span
+            style={{
+              width: `${Math.min(
+                product.conversion * 10,
+                100
+              )}%`,
+            }}
+          />
+        </div>
+      </div>
+
+      {/* AI SIGNAL */}
+
+      <div className="catalog-signal">
+        <div
+          className={`signal-badge ${product.status.toLowerCase()}`}
         >
-          {product.status}
-        </span>
+          {product.status === "HIGH" && (
+            <TrendingUp size={10} />
+          )}
 
-        <small
-          className={opportunity ? "change negative" : "change"}
-        >
-          {product.change}
-        </small>
+          {product.status === "MEDIUM" && (
+            <Sparkles size={10} />
+          )}
+
+          {product.status === "LOW" && (
+            <AlertCircle size={10} />
+          )}
+
+          {product.crossSell}
+        </div>
       </div>
 
-      <button className="more-button">
-        <MoreHorizontal size={16} />
-      </button>
-    </div>
-  );
-}
+      {/* ACTION */}
 
-function Recommendation({
-  icon,
-  title,
-  description,
-  impact,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  description: string;
-  impact: string;
-}) {
-  return (
-    <div className="recommendation-row">
-      <div className="recommendation-icon">{icon}</div>
+      <div className="catalog-action">
+        <button title="Edit product">
+          <Edit3 size={13} />
+        </button>
 
-      <div className="recommendation-content">
-        <strong>{title}</strong>
-        <p>{description}</p>
+        <button title="AI optimize">
+          <Sparkles size={13} />
+        </button>
       </div>
-
-      <div className="recommendation-impact">
-        <span>Potential</span>
-        <strong>{impact}</strong>
-      </div>
-
-      <button className="arrow-button">
-        <ArrowUpRight size={14} />
-      </button>
-    </div>
-  );
-}
-
-function Health({
-  label,
-  value,
-  positive = false,
-}: {
-  label: string;
-  value: string;
-  positive?: boolean;
-}) {
-  return (
-    <div className="health-item">
-      <span>{label}</span>
-      <strong className={positive ? "health-good" : "health-warning"}>
-        {value}
-      </strong>
     </div>
   );
 }

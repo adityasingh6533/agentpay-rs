@@ -3,20 +3,17 @@ import {
   Check,
   ChevronRight,
   CircleDollarSign,
-  Clock3,
   CreditCard,
-  MessageSquare,
-  Package,
-  Send,
   ShieldCheck,
   Sparkles,
-  User,
-  Zap,
 } from "lucide-react";
 
 import "../styles/Agent.css";
+
 import AgentActivity from "../components/AgentActivity";
 import AuditTrail from "../components/AuditTrail";
+import ChatPanel from "../components/ChatPanel";
+import RecommendationCard from "../components/RecommendationCard";
 
 function Agent() {
   return (
@@ -25,7 +22,9 @@ function Agent() {
 
       <div className="agent-page-header">
         <div>
-          <div className="eyebrow">AUTONOMOUS COMMERCE</div>
+          <div className="eyebrow">
+            AUTONOMOUS COMMERCE
+          </div>
 
           <div className="agent-heading">
             <div className="hero-agent-icon">
@@ -36,7 +35,8 @@ function Agent() {
               <h1>AI Revenue Agent</h1>
 
               <p>
-                Your autonomous growth engine for intelligent commerce.
+                Your autonomous growth engine for intelligent
+                commerce.
               </p>
             </div>
           </div>
@@ -51,158 +51,66 @@ function Agent() {
       {/* MAIN */}
 
       <div className="agent-layout">
-        {/* LEFT */}
+        {/* LEFT — INTERACTIVE CHAT */}
 
         <section className="conversation-panel">
-          <div className="conversation-header">
-            <div>
-              <span className="section-label">
-                CUSTOMER SESSION
-              </span>
+          <ChatPanel />
 
-              <div className="customer-heading">
-                <div className="customer-avatar">
-                  <User size={18} />
-                </div>
+          {/* AI RECOMMENDATION */}
 
-                <div>
-                  <strong>Rahul Sharma</strong>
+          <div className="agent-recommendation-section">
+            <RecommendationCard
+              recommendation={{
+                productName:
+                  "Velocity Running Shoes",
 
-                  <span>
-                    New customer · High intent
-                  </span>
-                </div>
-              </div>
-            </div>
+                description:
+                  "Lightweight daily running shoe",
 
-            <div className="session-id">
-              <Clock3 size={13} />
-              Session #AGT-8291
-            </div>
-          </div>
+                price: 1299,
 
-          {/* CONVERSATION */}
+                rating: 4.8,
 
-          <div className="conversation">
-            {/* CUSTOMER MESSAGE */}
+                reviews: "2,340",
 
-            <div className="message customer-message">
-              <div className="message-avatar customer">
-                <User size={14} />
-              </div>
+                matchScore: 94,
 
-              <div>
-                <span className="message-label">
-                  RAHUL
-                </span>
+                reason:
+                  "Customer requested running shoes under ₹1500. This product has the strongest rating, conversion rate and historical purchase affinity within the customer's budget.",
 
-                <div className="bubble">
-                  I need running shoes under ₹1500.
-                </div>
-              </div>
-            </div>
+                expectedAOV: 1498,
 
-            {/* AGENT MESSAGE */}
+                tag: "BEST MATCH",
 
-            <div className="message agent-message">
-              <div className="message-avatar agent">
-                <Bot size={14} />
-              </div>
+                crossSell: {
+                  name: "ProFit Running Socks",
 
-              <div className="agent-message-content">
-                <span className="message-label purple-text">
-                  AGENTPAY AI
-                </span>
+                  price: 199,
 
-                <div className="bubble agent-bubble">
-                  Absolutely. I found a high-rated running shoe
-                  that fits your budget. Since you're looking for
-                  running shoes, I also found a useful accessory
-                  that many runners pair with them.
-                </div>
+                  reason:
+                    "68% of customers buying these shoes also purchase this accessory.",
+                },
+              }}
 
-                {/* PRODUCT RECOMMENDATION */}
+              onSelect={() => {
+                console.log(
+                  "Recommendation selected"
+                );
+              }}
 
-                <div className="recommendation">
-                  <div className="recommendation-image">
-                    <Package size={30} />
-                  </div>
-
-                  <div className="recommendation-info">
-                    <span className="recommendation-tag">
-                      BEST MATCH
-                    </span>
-
-                    <strong>
-                      Velocity Running Shoes
-                    </strong>
-
-                    <p>
-                      Lightweight · 4.8★ · 2,340 reviews
-                    </p>
-
-                    <div className="recommendation-price">
-                      ₹1,299
-
-                      <span>
-                        Free delivery
-                      </span>
-                    </div>
-                  </div>
-
-                  <button className="select-product">
-                    Select
-                    <ChevronRight size={15} />
-                  </button>
-                </div>
-
-                {/* CROSS SELL */}
-
-                <div className="cross-sell">
-                  <div className="cross-icon">
-                    <Zap size={15} />
-                  </div>
-
-                  <div>
-                    <strong>
-                      Smart cross-sell
-                    </strong>
-
-                    <p>
-                      Add ProFit Running Socks for just ₹199.
-                      Customers buying this shoe often purchase
-                      them.
-                    </p>
-                  </div>
-
-                  <button className="add-button">
-                    + ₹199
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* INPUT */}
-
-          <div className="chat-input">
-            <MessageSquare size={17} />
-
-            <input
-              placeholder="Continue the conversation..."
-              readOnly
+              onAddCrossSell={() => {
+                console.log(
+                  "Cross-sell added"
+                );
+              }}
             />
-
-            <button>
-              <Send size={16} />
-            </button>
           </div>
         </section>
 
         {/* RIGHT SIDEBAR */}
 
         <aside className="agent-sidebar">
-          {/* DECISION */}
+          {/* AGENT DECISION */}
 
           <div className="agent-card decision-card">
             <div className="card-heading">
@@ -222,12 +130,18 @@ function Agent() {
             <div className="decision-box">
               <div>
                 <span>Predicted AOV</span>
-                <strong>₹1,498</strong>
+
+                <strong>
+                  ₹1,498
+                </strong>
               </div>
 
               <div>
                 <span>Confidence</span>
-                <strong>94%</strong>
+
+                <strong>
+                  94%
+                </strong>
               </div>
             </div>
 
@@ -253,7 +167,9 @@ function Agent() {
           <div className="agent-card guardrail-card">
             <div className="card-title-row">
               <div>
-                <span>SAFETY & CONTROL</span>
+                <span>
+                  SAFETY & CONTROL
+                </span>
 
                 <strong>
                   Action guardrails
@@ -285,7 +201,9 @@ function Agent() {
           <div className="checkout-card">
             <div className="checkout-top">
               <div>
-                <span>READY TO CHECKOUT</span>
+                <span>
+                  READY TO CHECKOUT
+                </span>
 
                 <strong>
                   ₹1,498
@@ -332,6 +250,8 @@ function Agent() {
     </div>
   );
 }
+
+/* GUARDRAIL */
 
 function Guardrail({
   text,

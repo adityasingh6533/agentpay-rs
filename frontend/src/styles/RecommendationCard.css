@@ -1,0 +1,456 @@
+.recommendation-card {
+  width: 100%;
+
+  overflow: hidden;
+
+  border: 1px solid rgba(132, 100, 255, 0.2);
+  border-radius: 11px;
+
+  background: #101117;
+}
+
+/* HEADER */
+
+.recommendation-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  padding: 11px 12px;
+
+  border-bottom: 1px solid #20232c;
+
+  background: rgba(132, 100, 255, 0.025);
+}
+
+.recommendation-agent {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.recommendation-agent-icon {
+  width: 27px;
+  height: 27px;
+
+  display: grid;
+  place-items: center;
+
+  border-radius: 6px;
+
+  color: #a38cff;
+  background: rgba(132, 100, 255, 0.1);
+}
+
+.recommendation-agent > div:last-child {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.recommendation-agent span {
+  color: #7161b1;
+
+  font-size: 5px;
+  font-weight: 800;
+  letter-spacing: 0.7px;
+}
+
+.recommendation-agent strong {
+  color: #999ca7;
+  font-size: 7px;
+}
+
+.recommendation-confidence {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+
+  padding: 5px 6px;
+
+  border-radius: 5px;
+
+  color: #a38cff;
+  background: rgba(132, 100, 255, 0.08);
+
+  font-size: 5px;
+  font-weight: 800;
+}
+
+/* PRODUCT */
+
+.recommendation-product {
+  display: flex;
+  gap: 11px;
+
+  padding: 12px;
+}
+
+.recommendation-product-image {
+  width: 92px;
+  height: 92px;
+
+  position: relative;
+
+  display: grid;
+  place-items: center;
+
+  flex-shrink: 0;
+
+  border-radius: 8px;
+
+  color: #626674;
+
+  background:
+    radial-gradient(
+      circle at center,
+      rgba(132, 100, 255, 0.1),
+      transparent 60%
+    ),
+    #181920;
+}
+
+.recommendation-product-image > span {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+
+  padding: 3px 4px;
+
+  border-radius: 3px;
+
+  color: #a38cff;
+  background: rgba(132, 100, 255, 0.1);
+
+  font-size: 4px;
+  font-weight: 800;
+}
+
+.recommendation-product-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.recommendation-product-label {
+  color: #565a67;
+
+  font-size: 5px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+}
+
+.recommendation-product-info h3 {
+  margin: 0;
+
+  color: #b2b5bf;
+
+  font-size: 11px;
+}
+
+.recommendation-product-info p {
+  margin: 0;
+
+  color: #606470;
+
+  font-size: 7px;
+  line-height: 1.4;
+}
+
+.recommendation-rating {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+
+  margin-top: 2px;
+
+  color: #d5a653;
+
+  font-size: 7px;
+}
+
+.recommendation-rating .reviews {
+  color: #555966;
+  font-size: 6px;
+}
+
+.recommendation-product-price {
+  margin-top: 2px;
+
+  color: #c0c2ca;
+
+  font-size: 12px;
+}
+
+/* REASON */
+
+.recommendation-reason {
+  display: flex;
+  gap: 7px;
+
+  margin: 0 12px;
+  padding: 9px;
+
+  border: 1px solid rgba(132, 100, 255, 0.11);
+  border-radius: 7px;
+
+  background: rgba(132, 100, 255, 0.035);
+}
+
+.reason-icon {
+  width: 22px;
+  height: 22px;
+
+  display: grid;
+  place-items: center;
+
+  flex-shrink: 0;
+
+  border-radius: 5px;
+
+  color: #a38cff;
+  background: rgba(132, 100, 255, 0.1);
+}
+
+.recommendation-reason > div:last-child {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.recommendation-reason span {
+  color: #7161b1;
+
+  font-size: 5px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+}
+
+.recommendation-reason p {
+  margin: 0;
+
+  color: #777b87;
+
+  font-size: 7px;
+  line-height: 1.45;
+}
+
+/* CROSS SELL */
+
+.recommendation-crosssell {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+
+  margin: 9px 12px 0;
+  padding: 9px;
+
+  border: 1px solid rgba(78, 211, 154, 0.11);
+  border-radius: 7px;
+
+  background: rgba(78, 211, 154, 0.025);
+}
+
+.crosssell-left {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+}
+
+.crosssell-icon {
+  width: 22px;
+  height: 22px;
+
+  display: grid;
+  place-items: center;
+
+  flex-shrink: 0;
+
+  border-radius: 5px;
+
+  color: #4ed39a;
+  background: rgba(78, 211, 154, 0.07);
+}
+
+.crosssell-left > div:last-child {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.crosssell-left span {
+  color: #4ed39a;
+
+  font-size: 5px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+}
+
+.crosssell-left strong {
+  color: #9fa3ae;
+  font-size: 7px;
+}
+
+.crosssell-left p {
+  max-width: 280px;
+
+  margin: 0;
+
+  color: #5c606c;
+
+  font-size: 6px;
+  line-height: 1.4;
+}
+
+.crosssell-action {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.crosssell-action > strong {
+  color: #aeb1bb;
+  font-size: 8px;
+}
+
+.crosssell-action button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+
+  padding: 5px 7px;
+
+  border: 1px solid rgba(78, 211, 154, 0.15);
+  border-radius: 5px;
+
+  color: #4ed39a;
+  background: rgba(78, 211, 154, 0.05);
+
+  font-size: 6px;
+  font-weight: 700;
+}
+
+.plus-icon {
+  font-size: 10px;
+}
+
+/* METRICS */
+
+.recommendation-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+
+  margin: 10px 12px 0;
+
+  border: 1px solid #20232c;
+  border-radius: 6px;
+
+  overflow: hidden;
+}
+
+.recommendation-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+
+  padding: 7px 8px;
+
+  border-right: 1px solid #20232c;
+}
+
+.recommendation-metric:last-child {
+  border-right: 0;
+}
+
+.recommendation-metric span {
+  color: #50545f;
+
+  font-size: 5px;
+  font-weight: 700;
+}
+
+.recommendation-metric strong {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+
+  color: #a3a6b1;
+
+  font-size: 8px;
+}
+
+.metric-success {
+  color: #4ed39a !important;
+}
+
+/* ACTIONS */
+
+.recommendation-actions {
+  display: flex;
+  gap: 6px;
+
+  padding: 10px 12px 12px;
+}
+
+.recommendation-select {
+  flex: 1;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+
+  padding: 8px;
+
+  border: 0;
+  border-radius: 6px;
+
+  color: white;
+  background: #8065f5;
+
+  font-size: 7px;
+  font-weight: 700;
+}
+
+.recommendation-select:hover {
+  background: #8d74ff;
+}
+
+.recommendation-details {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+
+  padding: 8px 10px;
+
+  border: 1px solid #292c35;
+  border-radius: 6px;
+
+  color: #747884;
+  background: #15161d;
+
+  font-size: 7px;
+}
+
+/* MOBILE */
+
+@media (max-width: 600px) {
+  .recommendation-product {
+    flex-direction: column;
+  }
+
+  .recommendation-product-image {
+    width: 100%;
+  }
+
+  .recommendation-crosssell {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .crosssell-action {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
