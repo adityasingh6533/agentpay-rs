@@ -19,6 +19,7 @@ import Transactions from "./pages/Transactions";
 import AuditTrail from "./components/AuditTrail";
 import Shop from "./pages/Shop";
 import PaymentSuccess from "./pages/PaymentSuccess";
+import "./styles/RichUI.css";
 const navItems = [
   { name: "Dashboard", path: "/", icon: LayoutDashboard },
   { name: "AI Agent", path: "/agent", icon: Bot },
