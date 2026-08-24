@@ -1,8 +1,0 @@
-# Rust build output
-/target/
-
-# Local environment
-.env
-
-# Editor and system files
-.DS_Store
