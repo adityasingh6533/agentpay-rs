@@ -2,7 +2,9 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::agent::state::AgentSession;
-use crate::models::{AuditEvent, CreateCustomer, Customer, Product, ProductRelationship};
+use crate::models::{
+    AuditEvent, CreateCustomer, Customer, Product, ProductRelationship, SpendingPolicy,
+};
 
 pub async fn create_customer(
     pool: &PgPool,
@@ -61,7 +63,7 @@ pub async fn get_product(pool: &PgPool, product_id: Uuid) -> Result<Option<Produ
             price,
             currency,
             stock,
-            rating,
+            rating::FLOAT8 AS rating,
             review_count,
             active,
             metadata,
@@ -92,7 +94,7 @@ pub async fn search_products(
             price,
             currency,
             stock,
-            rating,
+            rating::FLOAT8 AS rating,
             review_count,
             active,
             metadata,
@@ -252,7 +254,7 @@ pub async fn get_cross_sell_products(
             product_id,
             related_product_id,
             relationship_type,
-            confidence,
+            confidence::FLOAT8 AS confidence,
             support_count,
             created_at,
             updated_at
@@ -280,7 +282,7 @@ pub async fn get_products_by_ids(pool: &PgPool, ids: &[Uuid]) -> Result<Vec<Prod
             price,
             currency,
             stock,
-            rating,
+            rating::FLOAT8 AS rating,
             review_count,
             active,
             metadata,
@@ -294,5 +296,126 @@ pub async fn get_products_by_ids(pool: &PgPool, ids: &[Uuid]) -> Result<Vec<Prod
     )
     .bind(ids)
     .fetch_all(pool)
+    .await
+}
+
+pub async fn create_agent_decision(
+    pool: &PgPool,
+    session_id: Uuid,
+    intent_id: Option<Uuid>,
+    decision_type: &str,
+    reasoning: &str,
+    confidence: f64,
+    recommendation: serde_json::Value,
+    cart_id: Option<Uuid>,
+    requires_confirmation: bool,
+) -> Result<Uuid, sqlx::Error> {
+    let id = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO agent_decisions (
+            session_id,
+            intent_id,
+            decision_type,
+            reasoning,
+            confidence,
+            recommendation,
+            cart_id,
+            requires_confirmation
+        )
+        VALUES (
+            $1,
+            $2,
+            $3,
+            $4,
+            $5,
+            $6,
+            $7,
+            $8
+        )
+        RETURNING id
+        "#,
+    )
+    .bind(session_id)
+    .bind(intent_id)
+    .bind(decision_type)
+    .bind(reasoning)
+    .bind(confidence)
+    .bind(recommendation)
+    .bind(cart_id)
+    .bind(requires_confirmation)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(id)
+}
+
+pub async fn create_audit_event(
+    pool: &PgPool,
+    session_id: Uuid,
+    event_type: &str,
+    actor: &str,
+    status: &str,
+    message: &str,
+    metadata: serde_json::Value,
+) -> Result<Uuid, sqlx::Error> {
+    let id = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        INSERT INTO audit_events (
+            session_id,
+            event_type,
+            actor,
+            status,
+            message,
+            metadata
+        )
+        VALUES (
+            $1,
+            $2,
+            $3::audit_actor,
+            $4,
+            $5,
+            $6
+        )
+        RETURNING id
+        "#,
+    )
+    .bind(session_id)
+    .bind(event_type)
+    .bind(actor)
+    .bind(status)
+    .bind(message)
+    .bind(metadata)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(id)
+}
+
+pub async fn get_active_spending_policy(
+    pool: &PgPool,
+    merchant_id: Uuid,
+) -> Result<Option<SpendingPolicy>, sqlx::Error> {
+    sqlx::query_as::<_, SpendingPolicy>(
+        r#"
+        SELECT
+            id,
+            merchant_id,
+            max_transaction_amount,
+            daily_transaction_limit,
+            requires_confirmation_above,
+            allowed_categories,
+            currency,
+            active,
+            created_at,
+            updated_at
+        FROM spending_policies
+        WHERE merchant_id = $1
+          AND active = TRUE
+        ORDER BY created_at DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(merchant_id)
+    .fetch_optional(pool)
     .await
 }

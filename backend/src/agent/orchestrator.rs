@@ -1,8 +1,8 @@
-use std::sync::Arc;
-
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
+use std::sync::Arc;
+use uuid::Uuid;
 
 use crate::{
     agent::{
@@ -29,7 +29,7 @@ impl AgentOrchestrator {
         }
     }
 
-    pub async fn process(&self, message: &str) -> Result<AgentResult, AppError> {
+    pub async fn process(&self, session_id: Uuid, message: &str) -> Result<AgentResult, AppError> {
         if message.trim().is_empty() {
             return Err(AppError::Validation("message cannot be empty".into()));
         }
@@ -52,7 +52,59 @@ impl AgentOrchestrator {
                 reasons: candidate.reasons.clone(),
             })
             .collect::<Vec<_>>();
+        let cross_sell = if let Some(best) = ranked.first() {
+            crate::agent::tools::growth::find_cross_sell(&self.db, best.product.id)
+                .await?
+                .map(
+                    |opportunity| crate::agent::decision::CrossSellRecommendation {
+                        product_id: opportunity.recommended_product.id,
 
+                        product_name: opportunity.recommended_product.name.clone(),
+
+                        price: opportunity.recommended_product.price,
+
+                        confidence: opportunity.confidence,
+
+                        support_count: opportunity.support_count,
+                    },
+                )
+        } else {
+            None
+        };
+
+        let recommendation_json = serde_json::json!({
+            "recommendations": recommendations,
+            "cross_sell": cross_sell,
+        });
+
+        let decision_id =
+    crate::db::queries::create_agent_decision(
+        &self.db,
+        session_id,
+        None,
+        "PERSONALIZED_RECOMMENDATION",
+        "Selected products based on customer intent, catalog relevance, price, availability and growth affinity.",
+        intent.confidence,
+        recommendation_json,
+        None,
+        true,
+    )
+    .await?;
+
+        crate::db::queries::create_audit_event(
+            &self.db,
+            session_id,
+            "AGENT_DECISION_CREATED",
+            "AGENT",
+            "SUCCESS",
+            "Agent generated a personalized product recommendation.",
+            serde_json::json!({
+                "decision_id": decision_id,
+                "confidence": intent.confidence,
+                "has_cross_sell": cross_sell.is_some(),
+            }),
+        )
+        .await?;
         let response = if recommendations.is_empty() {
             "I couldn't find an available product matching your requirements.".to_string()
         } else {
@@ -66,11 +118,15 @@ impl AgentOrchestrator {
             message: response,
             intent,
             recommendations,
-            cross_sell: None,
+            cross_sell,
         })
     }
 
     async fn extract_intent(&self, message: &str) -> Result<CustomerIntent, AppError> {
+        if self.uses_placeholder_ai_config() {
+            return Ok(extract_demo_intent(message));
+        }
+
         let system_prompt = r#"
 You are the intent extraction component of a commerce agent.
 
@@ -150,6 +206,48 @@ Confidence must be between 0 and 1.
 
             AppError::Internal
         })
+    }
+
+    fn uses_placeholder_ai_config(&self) -> bool {
+        self.config.ai_api_key.trim().is_empty()
+            || self.config.ai_api_key == "your_api_key"
+            || self.config.ai_base_url.trim().is_empty()
+            || self.config.ai_base_url == "your_provider_base_url"
+            || self.config.ai_model.trim().is_empty()
+            || self.config.ai_model == "your_model"
+    }
+}
+
+fn extract_demo_intent(message: &str) -> CustomerIntent {
+    let lower = message.to_lowercase();
+    let category = if lower.contains("running") {
+        Some("Running".to_string())
+    } else if lower.contains("sportswear") || lower.contains("jacket") || lower.contains("shorts") {
+        Some("Sportswear".to_string())
+    } else if lower.contains("accessories") || lower.contains("socks") {
+        Some("Accessories".to_string())
+    } else {
+        None
+    };
+
+    let max_price = lower
+        .split(|character: char| !character.is_ascii_digit())
+        .filter(|part| !part.is_empty())
+        .filter_map(|part| part.parse::<i64>().ok())
+        .max();
+
+    let keywords = lower
+        .split(|character: char| !character.is_ascii_alphanumeric())
+        .filter(|part| part.len() > 2)
+        .map(ToString::to_string)
+        .collect();
+
+    CustomerIntent {
+        category,
+        max_price,
+        keywords,
+        wants_recommendation: true,
+        confidence: 0.75,
     }
 }
 

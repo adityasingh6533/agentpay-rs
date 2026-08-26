@@ -1,6 +1,6 @@
-use sqlx::PgPool;
-
 use crate::{agent::state::AgentSession, db::queries, errors::AppError, models::CreateCustomer};
+use sqlx::PgPool;
+use uuid::Uuid;
 
 pub async fn start_agent_session(
     pool: &PgPool,
@@ -35,9 +35,9 @@ use crate::{
 pub async fn process_agent_message(
     config: Arc<Config>,
     pool: &PgPool,
+    session_id: Uuid,
     message: &str,
 ) -> Result<AgentResult, AppError> {
     let agent = AgentOrchestrator::new(config, pool.clone());
-
-    agent.process(message).await
+    agent.process(session_id, message).await
 }
