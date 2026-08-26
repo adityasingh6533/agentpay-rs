@@ -18,3 +18,15 @@ pub struct Product {
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+pub struct ProductRelationship {
+    pub id: Uuid,
+    pub product_id: Uuid,
+    pub related_product_id: Uuid,
+    pub relationship_type: String,
+    pub confidence: f64,
+    pub support_count: i64,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}

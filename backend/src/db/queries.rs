@@ -2,7 +2,7 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::agent::state::AgentSession;
-use crate::models::{AuditEvent, CreateCustomer, Customer, Product};
+use crate::models::{AuditEvent, CreateCustomer, Customer, Product, ProductRelationship};
 
 pub async fn create_customer(
     pool: &PgPool,
@@ -238,4 +238,61 @@ pub async fn create_customer_session(
     tx.commit().await?;
 
     Ok((created_customer, session))
+}
+
+pub async fn get_cross_sell_products(
+    pool: &PgPool,
+    product_id: Uuid,
+    limit: i64,
+) -> Result<Vec<ProductRelationship>, sqlx::Error> {
+    sqlx::query_as::<_, ProductRelationship>(
+        r#"
+        SELECT
+            id,
+            product_id,
+            related_product_id,
+            relationship_type,
+            confidence,
+            support_count,
+            created_at,
+            updated_at
+        FROM product_relationships
+        WHERE product_id = $1
+          AND relationship_type = 'CROSS_SELL'
+        ORDER BY confidence DESC, support_count DESC
+        LIMIT $2
+        "#,
+    )
+    .bind(product_id)
+    .bind(limit)
+    .fetch_all(pool)
+    .await
+}
+
+pub async fn get_products_by_ids(pool: &PgPool, ids: &[Uuid]) -> Result<Vec<Product>, sqlx::Error> {
+    sqlx::query_as::<_, Product>(
+        r#"
+        SELECT
+            id,
+            name,
+            description,
+            category,
+            price,
+            currency,
+            stock,
+            rating,
+            review_count,
+            active,
+            metadata,
+            created_at,
+            updated_at
+        FROM products
+        WHERE id = ANY($1)
+          AND active = TRUE
+          AND stock > 0
+        "#,
+    )
+    .bind(ids)
+    .fetch_all(pool)
+    .await
 }

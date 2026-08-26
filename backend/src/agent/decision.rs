@@ -13,8 +13,10 @@ pub struct CustomerIntent {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentRecommendation {
     pub product_id: Uuid,
-    pub reason: String,
+    pub product_name: String,
+    pub price: i64,
     pub score: f64,
+    pub reasons: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -22,4 +24,5 @@ pub struct AgentResult {
     pub message: String,
     pub intent: CustomerIntent,
     pub recommendations: Vec<AgentRecommendation>,
+    pub cross_sell: Option<AgentRecommendation>,
 }

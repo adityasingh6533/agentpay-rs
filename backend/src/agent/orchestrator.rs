@@ -3,7 +3,6 @@ use std::sync::Arc;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
-use uuid::Uuid;
 
 use crate::{
     agent::{
@@ -40,13 +39,17 @@ impl AgentOrchestrator {
         let products =
             catalog::search(&self.db, intent.category.as_deref(), intent.max_price).await?;
 
-        let recommendations = products
+        let ranked = catalog::rank_products(products, intent.category.as_deref(), intent.max_price);
+
+        let recommendations = ranked
             .iter()
             .take(3)
-            .map(|product| AgentRecommendation {
-                product_id: product.id,
-                reason: format!("{} matches the customer's requirements", product.name),
-                score: product.rating.unwrap_or(0.0),
+            .map(|candidate| AgentRecommendation {
+                product_id: candidate.product.id,
+                product_name: candidate.product.name.clone(),
+                price: candidate.product.price,
+                score: candidate.score,
+                reasons: candidate.reasons.clone(),
             })
             .collect::<Vec<_>>();
 
@@ -63,6 +66,7 @@ impl AgentOrchestrator {
             message: response,
             intent,
             recommendations,
+            cross_sell: None,
         })
     }
 

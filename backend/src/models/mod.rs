@@ -6,4 +6,5 @@ pub mod product;
 
 pub use audit::AuditEvent;
 pub use customer::{CreateCustomer, Customer};
-pub use product::Product;
+pub use order::{Order, OrderItem};
+pub use product::{Product, ProductRelationship};
