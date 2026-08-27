@@ -536,3 +536,71 @@ pub async fn record_authorization_attempt(
 
     Ok(result.rows_affected() == 1)
 }
+
+pub async fn get_signed_agent_intent(
+    pool: &PgPool,
+    intent_id: Uuid,
+) -> Result<Option<crate::models::SignedAgentIntentRecord>, sqlx::Error> {
+    sqlx::query_as::<_, crate::models::SignedAgentIntentRecord>(
+        r#"
+        SELECT
+            id,
+            session_id,
+            action,
+            amount,
+            currency,
+            category,
+            product_ids,
+            requires_confirmation,
+            nonce,
+            issued_at,
+            expires_at,
+            signature,
+            status,
+            created_at
+        FROM signed_agent_intents
+        WHERE id = $1
+        LIMIT 1
+        "#,
+    )
+    .bind(intent_id)
+    .fetch_optional(pool)
+    .await
+}
+
+pub async fn update_signed_intent_status(
+    pool: &PgPool,
+    intent_id: Uuid,
+    status: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r#"
+        UPDATE signed_agent_intents
+        SET status = $2
+        WHERE id = $1
+        "#,
+    )
+    .bind(intent_id)
+    .bind(status)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+pub async fn consume_signed_intent(pool: &PgPool, intent_id: Uuid) -> Result<bool, sqlx::Error> {
+    let result = sqlx::query(
+        r#"
+        UPDATE signed_agent_intents
+        SET status = 'CONSUMED'
+        WHERE id = $1
+          AND status IN ('AUTHORIZED', 'REVIEW')
+          AND expires_at > NOW()
+        "#,
+    )
+    .bind(intent_id)
+    .execute(pool)
+    .await?;
+
+    Ok(result.rows_affected() == 1)
+}

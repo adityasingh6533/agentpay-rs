@@ -4,7 +4,7 @@ use axum::extract::State;
 use crate::{
     AppState,
     errors::AppError,
-    models::{CheckoutAuthorization, CheckoutRequest},
+    models::{CheckoutAuthorization, CheckoutRequest, CheckoutResponse, ExecuteCheckoutRequest},
 };
 
 pub async fn authorize_checkout(
@@ -24,6 +24,23 @@ pub async fn authorize_checkout(
         &request,
         today_spending,
         &policy,
+    )
+    .await?;
+
+    Ok(Json(result))
+}
+
+pub async fn execute_checkout(
+    State(state): State<AppState>,
+    Json(request): Json<ExecuteCheckoutRequest>,
+) -> Result<Json<CheckoutResponse>, AppError> {
+    let result = crate::services::checkout_service::execute_checkout(
+        &state.db,
+        &state.config.agent_signing_secret,
+        &state.razorpay,
+        request.session_id,
+        request.intent_id,
+        request.confirmation_token.as_deref(),
     )
     .await?;
 

@@ -8,9 +8,10 @@ pub mod product;
 pub mod signed_intent;
 
 pub use audit::AuditEvent;
-pub use checkout::{CheckoutAuthorization, CheckoutRequest};
+pub use checkout::{
+    CheckoutAuthorization, CheckoutRequest, CheckoutResponse, ExecuteCheckoutRequest,
+};
 pub use customer::{CreateCustomer, Customer};
-pub use order::{Order, OrderItem};
 pub use policy::SpendingPolicy;
 pub use product::{Product, ProductRelationship};
 pub use signed_intent::SignedAgentIntentRecord;

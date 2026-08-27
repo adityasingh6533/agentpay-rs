@@ -29,6 +29,7 @@ pub fn router() -> Router<AppState> {
         .route("/agent/sessions", post(super::agent::create_session))
         .route("/agent/message", post(super::agent::process_message))
         .route("/checkout/authorize", post(checkout::authorize_checkout))
+        .route("/checkout/execute", post(checkout::execute_checkout))
         .route(
             "/webhooks/razorpay",
             post(webhooks::razorpay::razorpay_webhook),

@@ -40,5 +40,7 @@ pub async fn authorize(
         });
     }
 
+    queries::update_signed_intent_status(pool, intent.payload.intent_id, decision).await?;
+
     Ok(result)
 }

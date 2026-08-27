@@ -30,6 +30,9 @@ pub enum AppError {
 
     #[error("internal server error")]
     Internal,
+
+    #[error("external service error: {0}")]
+    External(String),
 }
 
 #[derive(Debug, Serialize)]
@@ -77,6 +80,8 @@ impl IntoResponse for AppError {
                 "INTERNAL_ERROR",
                 "Internal server error".into(),
             ),
+
+            Self::External(message) => (StatusCode::BAD_GATEWAY, "EXTERNAL_ERROR", message),
         };
 
         (
