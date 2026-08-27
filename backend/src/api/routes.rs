@@ -4,7 +4,8 @@ use axum::{
     routing::{get, post},
 };
 
-use crate::{AppState, errors::AppError};
+use super::checkout;
+use crate::{AppState, errors::AppError, webhooks};
 use serde::Serialize;
 
 #[derive(Debug, Serialize)]
@@ -27,4 +28,9 @@ pub fn router() -> Router<AppState> {
         .route("/health", get(health))
         .route("/agent/sessions", post(super::agent::create_session))
         .route("/agent/message", post(super::agent::process_message))
+        .route("/checkout/authorize", post(checkout::authorize_checkout))
+        .route(
+            "/webhooks/razorpay",
+            post(webhooks::razorpay::razorpay_webhook),
+        )
 }

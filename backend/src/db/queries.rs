@@ -419,3 +419,120 @@ pub async fn get_active_spending_policy(
     .fetch_optional(pool)
     .await
 }
+
+pub async fn get_today_spending(pool: &PgPool, customer_id: Uuid) -> Result<i64, sqlx::Error> {
+    sqlx::query_scalar::<_, Option<i64>>(
+        r#"
+        SELECT COALESCE(SUM(amount), 0)
+        FROM checkouts
+        WHERE customer_id = $1
+          AND status = 'PAID'
+          AND created_at >= date_trunc('day', NOW())
+        "#,
+    )
+    .bind(customer_id)
+    .fetch_one(pool)
+    .await
+    .map(|amount| amount.unwrap_or(0))
+}
+
+use crate::agent::signed_intent::SignedAgentIntent;
+
+pub async fn save_signed_agent_intent(
+    pool: &PgPool,
+    intent: &SignedAgentIntent,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r#"
+        INSERT INTO signed_agent_intents (
+            id,
+            session_id,
+            action,
+            amount,
+            currency,
+            category,
+            product_ids,
+            requires_confirmation,
+            nonce,
+            issued_at,
+            expires_at,
+            signature,
+            status
+        )
+        VALUES (
+            $1,
+            $2,
+            $3,
+            $4,
+            $5,
+            $6,
+            $7,
+            $8,
+            $9,
+            $10,
+            $11,
+            $12,
+            'ISSUED'
+        )
+        "#,
+    )
+    .bind(intent.payload.intent_id)
+    .bind(intent.payload.session_id)
+    .bind(&intent.payload.action)
+    .bind(intent.payload.amount)
+    .bind(&intent.payload.currency)
+    .bind(&intent.payload.category)
+    .bind(&intent.payload.product_ids)
+    .bind(intent.payload.requires_confirmation)
+    .bind(intent.payload.nonce)
+    .bind(intent.payload.issued_at)
+    .bind(intent.payload.expires_at)
+    .bind(&intent.signature)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+pub async fn record_authorization_attempt(
+    pool: &PgPool,
+    intent_id: Uuid,
+    nonce: Uuid,
+    decision: &str,
+    reason: &str,
+) -> Result<bool, sqlx::Error> {
+    let result = sqlx::query(
+        r#"
+        INSERT INTO authorization_attempts (
+            id,
+            intent_id,
+            nonce,
+            decision,
+            reason,
+            authorized_at
+        )
+        VALUES (
+            $1,
+            $2,
+            $3,
+            $4,
+            $5,
+            CASE
+                WHEN $4 = 'AUTHORIZED'
+                THEN NOW()
+                ELSE NULL
+            END
+        )
+        ON CONFLICT DO NOTHING
+        "#,
+    )
+    .bind(Uuid::new_v4())
+    .bind(intent_id)
+    .bind(nonce)
+    .bind(decision)
+    .bind(reason)
+    .execute(pool)
+    .await?;
+
+    Ok(result.rows_affected() == 1)
+}

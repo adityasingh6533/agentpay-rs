@@ -9,15 +9,19 @@ mod api;
 mod config;
 mod db;
 mod errors;
+mod integrations;
 mod models;
 mod services;
+mod webhooks;
 
 use config::Config;
+use integrations::razorpay::client::RazorpayClient;
 
 #[derive(Clone)]
 pub struct AppState {
     pub config: Arc<Config>,
     pub db: sqlx::PgPool,
+    pub razorpay: RazorpayClient,
 }
 
 #[tokio::main]
@@ -37,9 +41,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     tracing::info!("postgres connection pool established");
 
+    let razorpay = RazorpayClient::new(
+        config.razorpay_key_id.clone(),
+        config.razorpay_key_secret.clone(),
+    );
+
     let state = AppState {
         config: Arc::new(config.clone()),
         db,
+        razorpay,
     };
 
     let app = Router::new()
