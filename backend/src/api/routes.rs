@@ -5,7 +5,9 @@ use axum::{
 };
 
 use super::checkout;
+
 use crate::{AppState, errors::AppError, webhooks};
+use crate::api::agent_catalog;
 use serde::Serialize;
 
 #[derive(Debug, Serialize)]
@@ -34,4 +36,15 @@ pub fn router() -> Router<AppState> {
             "/webhooks/razorpay",
             post(webhooks::razorpay::razorpay_webhook),
         )
+        .route(
+            "/api/checkout/confirmation",
+            post(checkout::request_confirmation),
+        )
+
+        .route(
+    "/api/agent/catalog",
+    get(agent_catalog::get_agent_catalog)
+)
+
+
 }

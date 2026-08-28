@@ -126,6 +126,7 @@ dependencies = [
  "dotenvy",
  "hex",
  "hmac",
+ "rand",
  "reqwest",
  "rust_decimal",
  "serde",

@@ -254,13 +254,23 @@ pub async fn execute_checkout(
         let token = confirmation_token
             .ok_or_else(|| AppError::Validation("Customer confirmation required".to_string()))?;
 
-        if token != "CONFIRMED" {
+        crate::services::confirmation_service::consume_confirmation(
+            pool,
+            intent.payload.intent_id,
+            intent.payload.session_id,
+            token,
+        )
+        .await?;
+
+        let authorized =
+            queries::authorize_confirmed_intent(pool, intent.payload.intent_id).await?;
+
+        if !authorized {
             return Err(AppError::Validation(
-                "Invalid customer confirmation".to_string(),
+                "Intent could not be authorized after confirmation".to_string(),
             ));
         }
     }
-
     let customer_confirmed = if intent.payload.requires_confirmation {
         true
     } else {

@@ -604,3 +604,77 @@ pub async fn consume_signed_intent(pool: &PgPool, intent_id: Uuid) -> Result<boo
 
     Ok(result.rows_affected() == 1)
 }
+
+pub async fn authorize_confirmed_intent(
+    pool: &PgPool,
+    intent_id: Uuid,
+) -> Result<bool, sqlx::Error> {
+    let result = sqlx::query(
+        r#"
+        UPDATE signed_agent_intents
+        SET status = 'AUTHORIZED'
+        WHERE id = $1
+          AND status = 'REVIEW'
+          AND expires_at > NOW()
+        "#,
+    )
+    .bind(intent_id)
+    .execute(pool)
+    .await?;
+
+    Ok(result.rows_affected() == 1)
+}
+
+#[derive(Debug, sqlx::FromRow)]
+pub struct AgentCatalogProduct {
+    pub id: uuid::Uuid,
+    pub name: String,
+    pub category: String,
+    pub price: i64,
+    pub stock: i32,
+    pub rating: Option<f64>,
+    pub reviews: Option<i32>,
+    pub cross_sell_score: Option<f64>,
+    pub conversion_rate: Option<f64>,
+    pub recommendation_priority: Option<String>,
+}
+
+pub async fn get_agent_catalog_products(
+    pool: &PgPool,
+    category: Option<&str>,
+    search: Option<&str>,
+) -> Result<Vec<AgentCatalogProduct>, sqlx::Error> {
+    sqlx::query_as::<_, AgentCatalogProduct>(
+        r#"
+        SELECT
+            p.id,
+            p.name,
+            p.category,
+            p.price,
+            p.stock,
+            p.rating,
+            p.reviews,
+            p.cross_sell_score,
+            p.conversion_rate,
+            p.recommendation_priority
+        FROM products p
+        WHERE
+            ($1::text IS NULL OR p.category = $1)
+            AND
+            (
+                $2::text IS NULL
+                OR p.name ILIKE '%' || $2 || '%'
+            )
+        ORDER BY
+            CASE
+                WHEN p.stock > 0 THEN 0
+                ELSE 1
+            END,
+            p.conversion_rate DESC NULLS LAST
+        "#,
+    )
+    .bind(category)
+    .bind(search)
+    .fetch_all(pool)
+    .await
+}

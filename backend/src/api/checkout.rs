@@ -7,6 +7,8 @@ use crate::{
     models::{CheckoutAuthorization, CheckoutRequest, CheckoutResponse, ExecuteCheckoutRequest},
 };
 
+use crate::models::{ConfirmationRequest, ConfirmationResponse};
+
 pub async fn authorize_checkout(
     State(state): State<AppState>,
     Json(request): Json<CheckoutRequest>,
@@ -45,4 +47,48 @@ pub async fn execute_checkout(
     .await?;
 
     Ok(Json(result))
+}
+
+pub async fn request_confirmation(
+    State(state): State<AppState>,
+    Json(request): Json<ConfirmationRequest>,
+) -> Result<Json<ConfirmationResponse>, AppError> {
+    let record = crate::db::queries::get_signed_agent_intent(&state.db, request.intent_id)
+        .await?
+        .ok_or_else(|| AppError::Validation("Agent intent not found".to_string()))?;
+
+    if record.session_id != request.session_id {
+        return Err(AppError::Validation(
+            "Intent does not belong to this session".to_string(),
+        ));
+    }
+
+    if !record.requires_confirmation {
+        return Err(AppError::Validation(
+            "This intent does not require confirmation".to_string(),
+        ));
+    }
+
+    let (response, token) =
+        crate::services::confirmation_service::create_confirmation(&state.db, &request).await?;
+
+    // IMPORTANT:
+    // In production the token is delivered
+    // through an authenticated customer channel.
+    //
+    // For the hackathon API response we expose it
+    // only because there is no notification provider yet.
+    //
+    // Never persist the raw token.
+
+    tracing::info!(
+        intent_id = %request.intent_id,
+        "Customer confirmation generated"
+    );
+
+    Ok(Json(ConfirmationResponse {
+        intent_id: response.intent_id,
+        status: format!("{}:{}", response.status, token),
+        expires_at: response.expires_at,
+    }))
 }
