@@ -6,9 +6,6 @@ pub struct CheckoutRequest {
     pub session_id: Uuid,
     pub customer_id: Uuid,
     pub merchant_id: Uuid,
-    pub amount: i64,
-    pub currency: String,
-    pub category: String,
     pub product_ids: Vec<Uuid>,
 }
 
@@ -27,8 +24,9 @@ pub struct CheckoutAuthorization {
     pub decision: String,
     pub reason: String,
     pub requires_confirmation: bool,
+    pub amount: i64,
+    pub currency: String,
 }
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CheckoutResponse {
     pub status: String,

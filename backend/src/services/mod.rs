@@ -3,3 +3,4 @@ pub mod checkout_service;
 pub mod confirmation_service;
 pub mod growth_service;
 pub mod policy_service;
+pub mod pricing_service;

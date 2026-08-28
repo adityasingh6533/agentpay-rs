@@ -684,3 +684,31 @@ pub async fn get_agent_catalog_products(
     .fetch_all(pool)
     .await
 }
+
+#[derive(Debug, sqlx::FromRow)]
+pub struct CheckoutProduct {
+    pub id: uuid::Uuid,
+    pub price: i64,
+    pub stock: i32,
+    pub category: String,
+}
+
+pub async fn get_checkout_products(
+    pool: &PgPool,
+    product_ids: &[uuid::Uuid],
+) -> Result<Vec<CheckoutProduct>, sqlx::Error> {
+    sqlx::query_as::<_, CheckoutProduct>(
+        r#"
+        SELECT
+            id,
+            price,
+            stock,
+            category
+        FROM products
+        WHERE id = ANY($1)
+        "#,
+    )
+    .bind(product_ids)
+    .fetch_all(pool)
+    .await
+}

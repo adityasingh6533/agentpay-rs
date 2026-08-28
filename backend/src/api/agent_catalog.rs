@@ -10,9 +10,25 @@ use crate::{AppState, errors::AppError};
 #[derive(Debug, Serialize)]
 pub struct AgentCatalogResponse {
     pub protocol: CatalogProtocol,
+    pub merchant: MerchantInfo,
     pub capabilities: Capabilities,
+    pub checkout: CheckoutCapability,
     pub pagination: Pagination,
     pub products: Vec<AgentProduct>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MerchantInfo {
+    pub currency: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CheckoutCapability {
+    pub authorization_endpoint: &'static str,
+    pub execution_endpoint: &'static str,
+    pub method: &'static str,
+    pub authorization_required: bool,
+    pub customer_confirmation_supported: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -51,6 +67,13 @@ pub struct AgentProduct {
     pub rating: Option<f64>,
     pub reviews: Option<i32>,
     pub agent_signals: AgentSignals,
+    pub checkout: ProductCheckout,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ProductCheckout {
+    pub purchasable: bool,
+    pub requires_authorization: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -90,23 +113,33 @@ pub async fn get_agent_catalog(
     let products = products
         .into_iter()
         .take(limit as usize)
-        .map(|product| AgentProduct {
-            id: product.id,
-            name: product.name,
-            category: product.category,
-            price: product.price,
-            currency: "INR",
-            in_stock: product.stock > 0,
-            stock_quantity: product.stock,
-            rating: product.rating,
-            reviews: product.reviews,
-            agent_signals: AgentSignals {
-                cross_sell_score: product.cross_sell_score,
+        .map(|product| {
+            let in_stock = product.stock > 0;
 
-                conversion_rate: product.conversion_rate,
+            AgentProduct {
+                id: product.id,
+                name: product.name,
+                category: product.category,
+                price: product.price,
+                currency: "INR",
+                in_stock,
+                stock_quantity: product.stock,
+                rating: product.rating,
+                reviews: product.reviews,
 
-                recommendation_priority: product.recommendation_priority,
-            },
+                agent_signals: AgentSignals {
+                    cross_sell_score: product.cross_sell_score,
+
+                    conversion_rate: product.conversion_rate,
+
+                    recommendation_priority: product.recommendation_priority,
+                },
+
+                checkout: ProductCheckout {
+                    purchasable: in_stock,
+                    requires_authorization: true,
+                },
+            }
         })
         .collect::<Vec<_>>();
 
@@ -119,12 +152,26 @@ pub async fn get_agent_catalog(
             purpose: "Machine-readable catalog and autonomous commerce discovery",
         },
 
+        merchant: MerchantInfo { currency: "INR" },
+
         capabilities: Capabilities {
             search: true,
             recommendations: true,
             checkout: true,
             autonomous_purchase: true,
             customer_confirmation: true,
+        },
+
+        checkout: CheckoutCapability {
+            authorization_endpoint: "/api/checkout/authorize",
+
+            execution_endpoint: "/api/checkout/execute",
+
+            method: "POST",
+
+            authorization_required: true,
+
+            customer_confirmation_supported: true,
         },
 
         pagination: Pagination {
