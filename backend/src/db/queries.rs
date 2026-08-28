@@ -643,6 +643,8 @@ pub async fn get_agent_catalog_products(
     pool: &PgPool,
     category: Option<&str>,
     search: Option<&str>,
+    limit: i64,
+    offset: i64,
 ) -> Result<Vec<AgentCatalogProduct>, sqlx::Error> {
     sqlx::query_as::<_, AgentCatalogProduct>(
         r#"
@@ -671,10 +673,14 @@ pub async fn get_agent_catalog_products(
                 ELSE 1
             END,
             p.conversion_rate DESC NULLS LAST
+        LIMIT $3
+        OFFSET $4
         "#,
     )
     .bind(category)
     .bind(search)
+    .bind(limit)
+    .bind(offset)
     .fetch_all(pool)
     .await
 }

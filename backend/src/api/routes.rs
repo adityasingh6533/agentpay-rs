@@ -6,8 +6,8 @@ use axum::{
 
 use super::checkout;
 
-use crate::{AppState, errors::AppError, webhooks};
 use crate::api::agent_catalog;
+use crate::{AppState, errors::AppError, webhooks};
 use serde::Serialize;
 
 #[derive(Debug, Serialize)]
@@ -40,11 +40,5 @@ pub fn router() -> Router<AppState> {
             "/api/checkout/confirmation",
             post(checkout::request_confirmation),
         )
-
-        .route(
-    "/api/agent/catalog",
-    get(agent_catalog::get_agent_catalog)
-)
-
-
+        .route("/api/agent/catalog", get(agent_catalog::get_agent_catalog))
 }

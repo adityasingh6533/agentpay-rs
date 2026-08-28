@@ -1,16 +1,17 @@
 use axum::{
-    extract::{Query, State},
     Json,
+    extract::{Query, State},
 };
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::{errors::AppError, AppState};
+use crate::{AppState, errors::AppError};
 
 #[derive(Debug, Serialize)]
 pub struct AgentCatalogResponse {
     pub protocol: CatalogProtocol,
     pub capabilities: Capabilities,
+    pub pagination: Pagination,
     pub products: Vec<AgentProduct>,
 }
 
@@ -28,6 +29,14 @@ pub struct Capabilities {
     pub checkout: bool,
     pub autonomous_purchase: bool,
     pub customer_confirmation: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct Pagination {
+    pub limit: i64,
+    pub offset: i64,
+    pub returned: usize,
+    pub has_more: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -55,22 +64,32 @@ pub struct AgentSignals {
 pub struct CatalogQuery {
     pub category: Option<String>,
     pub q: Option<String>,
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
 }
 
 pub async fn get_agent_catalog(
     State(state): State<AppState>,
     Query(query): Query<CatalogQuery>,
 ) -> Result<Json<AgentCatalogResponse>, AppError> {
-    let products =
-        crate::db::queries::get_agent_catalog_products(
-            &state.db,
-            query.category.as_deref(),
-            query.q.as_deref(),
-        )
-        .await?;
+    let limit = query.limit.unwrap_or(25).clamp(1, 100);
+
+    let offset = query.offset.unwrap_or(0).max(0);
+
+    let products = crate::db::queries::get_agent_catalog_products(
+        &state.db,
+        query.category.as_deref(),
+        query.q.as_deref(),
+        limit + 1,
+        offset,
+    )
+    .await?;
+
+    let has_more = products.len() > limit as usize;
 
     let products = products
         .into_iter()
+        .take(limit as usize)
         .map(|product| AgentProduct {
             id: product.id,
             name: product.name,
@@ -83,19 +102,21 @@ pub async fn get_agent_catalog(
             reviews: product.reviews,
             agent_signals: AgentSignals {
                 cross_sell_score: product.cross_sell_score,
+
                 conversion_rate: product.conversion_rate,
-                recommendation_priority:
-                    product.recommendation_priority,
+
+                recommendation_priority: product.recommendation_priority,
             },
         })
-        .collect();
+        .collect::<Vec<_>>();
+
+    let returned = products.len();
 
     Ok(Json(AgentCatalogResponse {
         protocol: CatalogProtocol {
             name: "AgentPay Commerce Protocol",
             version: "1.0",
-            purpose:
-                "Machine-readable catalog and autonomous commerce discovery",
+            purpose: "Machine-readable catalog and autonomous commerce discovery",
         },
 
         capabilities: Capabilities {
@@ -104,6 +125,13 @@ pub async fn get_agent_catalog(
             checkout: true,
             autonomous_purchase: true,
             customer_confirmation: true,
+        },
+
+        pagination: Pagination {
+            limit,
+            offset,
+            returned,
+            has_more,
         },
 
         products,
