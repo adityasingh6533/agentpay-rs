@@ -1,81 +1,71 @@
-use sqlx::PgPool;
+use chrono::{DateTime, Utc};
+use serde_json::Value;
+use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
-use crate::agent::state::AgentSession;
-use crate::models::{
-    AuditEvent, CreateCustomer, Customer, Product, ProductRelationship, SpendingPolicy,
+use crate::{
+    agent::{signed_intent::SignedAgentIntent, state::AgentSession},
+    models::{
+        CreateCustomer, Customer, Product, ProductRelationship, SignedAgentIntentRecord,
+        SpendingPolicy,
+    },
 };
 
-pub async fn create_customer(
+#[derive(Debug, sqlx::FromRow)]
+pub struct AgentCatalogProduct {
+    pub id: Uuid,
+    pub name: String,
+    pub category: String,
+    pub price: i64,
+    pub stock: i32,
+    pub rating: Option<f64>,
+    pub reviews: Option<i32>,
+    pub cross_sell_score: Option<f64>,
+    pub conversion_rate: Option<f64>,
+    pub recommendation_priority: Option<String>,
+}
+
+#[derive(Debug)]
+pub struct WebhookEventInsert {
+    pub event_id: String,
+    pub event_type: String,
+    pub razorpay_order_id: Option<String>,
+    pub razorpay_payment_id: Option<String>,
+    pub payload: Value,
+}
+
+pub async fn create_customer_session(
     pool: &PgPool,
-    input: CreateCustomer,
-) -> Result<Customer, sqlx::Error> {
-    sqlx::query_as::<_, Customer>(
+    customer: CreateCustomer,
+) -> Result<(Customer, AgentSession), sqlx::Error> {
+    let customer = sqlx::query_as::<_, Customer>(
         r#"
-        INSERT INTO customers (
-            name,
-            email
-        )
+        INSERT INTO customers (name, email)
         VALUES ($1, $2)
-        RETURNING
-            id,
-            name,
-            email,
-            created_at,
-            updated_at
+        ON CONFLICT (email)
+        DO UPDATE SET
+            name = EXCLUDED.name,
+            updated_at = NOW()
+        RETURNING id, name, email, created_at, updated_at
         "#,
     )
-    .bind(input.name)
-    .bind(input.email)
+    .bind(customer.name.trim())
+    .bind(customer.email.as_deref().map(str::trim))
     .fetch_one(pool)
-    .await
-}
+    .await?;
 
-pub async fn get_customer(
-    pool: &PgPool,
-    customer_id: Uuid,
-) -> Result<Option<Customer>, sqlx::Error> {
-    sqlx::query_as::<_, Customer>(
+    let session = sqlx::query_as::<_, AgentSession>(
         r#"
-        SELECT
-            id,
-            name,
-            email,
-            created_at,
-            updated_at
-        FROM customers
-        WHERE id = $1
+        INSERT INTO agent_sessions (customer_id, status)
+        VALUES ($1, 'IDLE'::agent_session_status)
+        RETURNING id, customer_id, status::text AS status, created_at, updated_at
         "#,
     )
-    .bind(customer_id)
-    .fetch_optional(pool)
-    .await
-}
+    .bind(customer.id)
+    .fetch_one(pool)
+    .await?;
 
-pub async fn get_product(pool: &PgPool, product_id: Uuid) -> Result<Option<Product>, sqlx::Error> {
-    sqlx::query_as::<_, Product>(
-        r#"
-        SELECT
-            id,
-            name,
-            description,
-            category,
-            price,
-            currency,
-            stock,
-            rating::FLOAT8 AS rating,
-            review_count,
-            active,
-            metadata,
-            created_at,
-            updated_at
-        FROM products
-        WHERE id = $1
-        "#,
-    )
-    .bind(product_id)
-    .fetch_optional(pool)
-    .await
+    Ok((customer, session))
 }
 
 pub async fn search_products(
@@ -92,9 +82,9 @@ pub async fn search_products(
             description,
             category,
             price,
-            currency,
+            currency::text AS currency,
             stock,
-            rating::FLOAT8 AS rating,
+            rating::float8 AS rating,
             review_count,
             active,
             metadata,
@@ -103,11 +93,9 @@ pub async fn search_products(
         FROM products
         WHERE active = TRUE
           AND stock > 0
-          AND ($1::TEXT IS NULL OR category = $1)
-          AND ($2::BIGINT IS NULL OR price <= $2)
-        ORDER BY
-            rating DESC NULLS LAST,
-            review_count DESC
+          AND ($1::text IS NULL OR category ILIKE $1)
+          AND ($2::bigint IS NULL OR price <= $2)
+        ORDER BY rating DESC NULLS LAST, review_count DESC, price ASC
         LIMIT $3
         "#,
     )
@@ -118,128 +106,40 @@ pub async fn search_products(
     .await
 }
 
-pub async fn get_audit_events(
+pub async fn get_checkout_products(
     pool: &PgPool,
-    session_id: Uuid,
-) -> Result<Vec<AuditEvent>, sqlx::Error> {
-    sqlx::query_as::<_, AuditEvent>(
+    product_ids: &[Uuid],
+) -> Result<Vec<Product>, sqlx::Error> {
+    sqlx::query_as::<_, Product>(
         r#"
         SELECT
             id,
-            session_id,
-            event_type,
-            actor::TEXT,
-            status,
-            message,
+            name,
+            description,
+            category,
+            price,
+            currency::text AS currency,
+            stock,
+            rating::float8 AS rating,
+            review_count,
+            active,
             metadata,
-            created_at
-        FROM audit_events
-        WHERE session_id = $1
-        ORDER BY created_at DESC
+            created_at,
+            updated_at
+        FROM products
+        WHERE id = ANY($1)
         "#,
     )
-    .bind(session_id)
+    .bind(product_ids)
     .fetch_all(pool)
     .await
 }
 
-pub async fn create_agent_session(
+pub async fn get_products_by_ids(
     pool: &PgPool,
-    customer_id: Uuid,
-) -> Result<AgentSession, sqlx::Error> {
-    sqlx::query_as::<_, AgentSession>(
-        r#"
-        INSERT INTO agent_sessions (
-            customer_id,
-            status
-        )
-        VALUES ($1, 'IDLE')
-        RETURNING
-            id,
-            customer_id,
-            status::TEXT,
-            created_at,
-            updated_at
-        "#,
-    )
-    .bind(customer_id)
-    .fetch_one(pool)
-    .await
-}
-pub async fn create_customer_session(
-    pool: &PgPool,
-    customer: CreateCustomer,
-) -> Result<(crate::models::Customer, AgentSession), sqlx::Error> {
-    let mut tx = pool.begin().await?;
-
-    let created_customer = sqlx::query_as::<_, crate::models::Customer>(
-        r#"
-            INSERT INTO customers (
-                name,
-                email
-            )
-            VALUES ($1, $2)
-            ON CONFLICT (email)
-            DO UPDATE SET
-                name = EXCLUDED.name,
-                updated_at = NOW()
-            RETURNING
-                id,
-                name,
-                email,
-                created_at,
-                updated_at
-            "#,
-    )
-    .bind(&customer.name)
-    .bind(&customer.email)
-    .fetch_one(&mut *tx)
-    .await?;
-
-    let session = sqlx::query_as::<_, AgentSession>(
-        r#"
-            INSERT INTO agent_sessions (
-                customer_id,
-                status
-            )
-            VALUES ($1, 'IDLE')
-            RETURNING
-                id,
-                customer_id,
-                status::TEXT,
-                created_at,
-                updated_at
-            "#,
-    )
-    .bind(created_customer.id)
-    .fetch_one(&mut *tx)
-    .await?;
-
-    sqlx::query(
-        r#"
-        INSERT INTO audit_events (
-            session_id,
-            event_type,
-            actor,
-            status,
-            message
-        )
-        VALUES (
-            $1,
-            'SESSION_CREATED',
-            'SYSTEM',
-            'SUCCESS',
-            'Agent session created'
-        )
-        "#,
-    )
-    .bind(session.id)
-    .execute(&mut *tx)
-    .await?;
-
-    tx.commit().await?;
-
-    Ok((created_customer, session))
+    product_ids: &[Uuid],
+) -> Result<Vec<Product>, sqlx::Error> {
+    get_checkout_products(pool, product_ids).await
 }
 
 pub async fn get_cross_sell_products(
@@ -254,7 +154,7 @@ pub async fn get_cross_sell_products(
             product_id,
             related_product_id,
             relationship_type,
-            confidence::FLOAT8 AS confidence,
+            confidence::float8 AS confidence,
             support_count,
             created_at,
             updated_at
@@ -271,124 +171,57 @@ pub async fn get_cross_sell_products(
     .await
 }
 
-pub async fn get_products_by_ids(pool: &PgPool, ids: &[Uuid]) -> Result<Vec<Product>, sqlx::Error> {
-    sqlx::query_as::<_, Product>(
+pub async fn get_agent_catalog_products(
+    pool: &PgPool,
+    category: Option<&str>,
+    query: Option<&str>,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<AgentCatalogProduct>, sqlx::Error> {
+    let search = query.map(|value| format!("%{}%", value.trim()));
+
+    sqlx::query_as::<_, AgentCatalogProduct>(
         r#"
         SELECT
-            id,
-            name,
-            description,
-            category,
-            price,
-            currency,
-            stock,
-            rating::FLOAT8 AS rating,
-            review_count,
-            active,
-            metadata,
-            created_at,
-            updated_at
-        FROM products
-        WHERE id = ANY($1)
-          AND active = TRUE
-          AND stock > 0
+            p.id,
+            p.name,
+            p.category,
+            p.price,
+            p.stock::int4 AS stock,
+            p.rating::float8 AS rating,
+            p.review_count::int4 AS reviews,
+            rel.cross_sell_score,
+            NULL::float8 AS conversion_rate,
+            CASE
+                WHEN p.stock > 0 AND COALESCE(p.rating, 0) >= 4.7 THEN 'HIGH'
+                WHEN p.stock > 0 THEN 'NORMAL'
+                ELSE 'LOW'
+            END AS recommendation_priority
+        FROM products p
+        LEFT JOIN LATERAL (
+            SELECT MAX(confidence)::float8 AS cross_sell_score
+            FROM product_relationships pr
+            WHERE pr.product_id = p.id
+              AND pr.relationship_type = 'CROSS_SELL'
+        ) rel ON TRUE
+        WHERE p.active = TRUE
+          AND ($1::text IS NULL OR p.category ILIKE $1)
+          AND (
+              $2::text IS NULL
+              OR p.name ILIKE $2
+              OR p.description ILIKE $2
+              OR p.category ILIKE $2
+          )
+        ORDER BY p.rating DESC NULLS LAST, p.review_count DESC, p.name ASC
+        LIMIT $3 OFFSET $4
         "#,
     )
-    .bind(ids)
+    .bind(category)
+    .bind(search)
+    .bind(limit)
+    .bind(offset)
     .fetch_all(pool)
     .await
-}
-
-pub async fn create_agent_decision(
-    pool: &PgPool,
-    session_id: Uuid,
-    intent_id: Option<Uuid>,
-    decision_type: &str,
-    reasoning: &str,
-    confidence: f64,
-    recommendation: serde_json::Value,
-    cart_id: Option<Uuid>,
-    requires_confirmation: bool,
-) -> Result<Uuid, sqlx::Error> {
-    let id = sqlx::query_scalar::<_, Uuid>(
-        r#"
-        INSERT INTO agent_decisions (
-            session_id,
-            intent_id,
-            decision_type,
-            reasoning,
-            confidence,
-            recommendation,
-            cart_id,
-            requires_confirmation
-        )
-        VALUES (
-            $1,
-            $2,
-            $3,
-            $4,
-            $5,
-            $6,
-            $7,
-            $8
-        )
-        RETURNING id
-        "#,
-    )
-    .bind(session_id)
-    .bind(intent_id)
-    .bind(decision_type)
-    .bind(reasoning)
-    .bind(confidence)
-    .bind(recommendation)
-    .bind(cart_id)
-    .bind(requires_confirmation)
-    .fetch_one(pool)
-    .await?;
-
-    Ok(id)
-}
-
-pub async fn create_audit_event(
-    pool: &PgPool,
-    session_id: Uuid,
-    event_type: &str,
-    actor: &str,
-    status: &str,
-    message: &str,
-    metadata: serde_json::Value,
-) -> Result<Uuid, sqlx::Error> {
-    let id = sqlx::query_scalar::<_, Uuid>(
-        r#"
-        INSERT INTO audit_events (
-            session_id,
-            event_type,
-            actor,
-            status,
-            message,
-            metadata
-        )
-        VALUES (
-            $1,
-            $2,
-            $3::audit_actor,
-            $4,
-            $5,
-            $6
-        )
-        RETURNING id
-        "#,
-    )
-    .bind(session_id)
-    .bind(event_type)
-    .bind(actor)
-    .bind(status)
-    .bind(message)
-    .bind(metadata)
-    .fetch_one(pool)
-    .await?;
-
-    Ok(id)
 }
 
 pub async fn get_active_spending_policy(
@@ -404,7 +237,7 @@ pub async fn get_active_spending_policy(
             daily_transaction_limit,
             requires_confirmation_above,
             allowed_categories,
-            currency,
+            currency::text AS currency,
             active,
             created_at,
             updated_at
@@ -421,22 +254,21 @@ pub async fn get_active_spending_policy(
 }
 
 pub async fn get_today_spending(pool: &PgPool, customer_id: Uuid) -> Result<i64, sqlx::Error> {
-    sqlx::query_scalar::<_, Option<i64>>(
+    let row = sqlx::query(
         r#"
-        SELECT COALESCE(SUM(amount), 0)
+        SELECT COALESCE(SUM(amount), 0)::bigint AS total
         FROM checkouts
         WHERE customer_id = $1
-          AND status = 'PAID'
+          AND status = 'PAID'::checkout_status
           AND created_at >= date_trunc('day', NOW())
         "#,
     )
     .bind(customer_id)
     .fetch_one(pool)
-    .await
-    .map(|amount| amount.unwrap_or(0))
-}
+    .await?;
 
-use crate::agent::signed_intent::SignedAgentIntent;
+    Ok(row.get("total"))
+}
 
 pub async fn save_signed_agent_intent(
     pool: &PgPool,
@@ -459,21 +291,7 @@ pub async fn save_signed_agent_intent(
             signature,
             status
         )
-        VALUES (
-            $1,
-            $2,
-            $3,
-            $4,
-            $5,
-            $6,
-            $7,
-            $8,
-            $9,
-            $10,
-            $11,
-            $12,
-            'ISSUED'
-        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'ISSUED')
         "#,
     )
     .bind(intent.payload.intent_id)
@@ -492,6 +310,36 @@ pub async fn save_signed_agent_intent(
     .await?;
 
     Ok(())
+}
+
+pub async fn get_signed_agent_intent(
+    pool: &PgPool,
+    intent_id: Uuid,
+) -> Result<Option<SignedAgentIntentRecord>, sqlx::Error> {
+    sqlx::query_as::<_, SignedAgentIntentRecord>(
+        r#"
+        SELECT
+            id,
+            session_id,
+            action,
+            amount,
+            currency,
+            category,
+            product_ids,
+            requires_confirmation,
+            nonce,
+            issued_at,
+            expires_at,
+            signature,
+            status,
+            created_at
+        FROM signed_agent_intents
+        WHERE id = $1
+        "#,
+    )
+    .bind(intent_id)
+    .fetch_optional(pool)
+    .await
 }
 
 pub async fn record_authorization_attempt(
@@ -517,13 +365,9 @@ pub async fn record_authorization_attempt(
             $3,
             $4,
             $5,
-            CASE
-                WHEN $4 = 'AUTHORIZED'
-                THEN NOW()
-                ELSE NULL
-            END
+            CASE WHEN $4 = 'AUTHORIZED' THEN NOW() ELSE NULL END
         )
-        ON CONFLICT DO NOTHING
+        ON CONFLICT (intent_id) DO NOTHING
         "#,
     )
     .bind(Uuid::new_v4())
@@ -537,42 +381,18 @@ pub async fn record_authorization_attempt(
     Ok(result.rows_affected() == 1)
 }
 
-pub async fn get_signed_agent_intent(
-    pool: &PgPool,
-    intent_id: Uuid,
-) -> Result<Option<crate::models::SignedAgentIntentRecord>, sqlx::Error> {
-    sqlx::query_as::<_, crate::models::SignedAgentIntentRecord>(
-        r#"
-        SELECT
-            id,
-            session_id,
-            action,
-            amount,
-            currency,
-            category,
-            product_ids,
-            requires_confirmation,
-            nonce,
-            issued_at,
-            expires_at,
-            signature,
-            status,
-            created_at
-        FROM signed_agent_intents
-        WHERE id = $1
-        LIMIT 1
-        "#,
-    )
-    .bind(intent_id)
-    .fetch_optional(pool)
-    .await
-}
-
 pub async fn update_signed_intent_status(
     pool: &PgPool,
     intent_id: Uuid,
-    status: &str,
+    decision: &str,
 ) -> Result<(), sqlx::Error> {
+    let status = match decision {
+        "AUTHORIZED" => "AUTHORIZED",
+        "REVIEW" => "REVIEW",
+        "BLOCKED" => "BLOCKED",
+        other => other,
+    };
+
     sqlx::query(
         r#"
         UPDATE signed_agent_intents
@@ -586,23 +406,6 @@ pub async fn update_signed_intent_status(
     .await?;
 
     Ok(())
-}
-
-pub async fn consume_signed_intent(pool: &PgPool, intent_id: Uuid) -> Result<bool, sqlx::Error> {
-    let result = sqlx::query(
-        r#"
-        UPDATE signed_agent_intents
-        SET status = 'CONSUMED'
-        WHERE id = $1
-          AND status IN ('AUTHORIZED', 'REVIEW')
-          AND expires_at > NOW()
-        "#,
-    )
-    .bind(intent_id)
-    .execute(pool)
-    .await?;
-
-    Ok(result.rows_affected() == 1)
 }
 
 pub async fn authorize_confirmed_intent(
@@ -625,90 +428,478 @@ pub async fn authorize_confirmed_intent(
     Ok(result.rows_affected() == 1)
 }
 
-#[derive(Debug, sqlx::FromRow)]
-pub struct AgentCatalogProduct {
-    pub id: uuid::Uuid,
-    pub name: String,
-    pub category: String,
-    pub price: i64,
-    pub stock: i32,
-    pub rating: Option<f64>,
-    pub reviews: Option<i32>,
-    pub cross_sell_score: Option<f64>,
-    pub conversion_rate: Option<f64>,
-    pub recommendation_priority: Option<String>,
+pub async fn claim_signed_intent(pool: &PgPool, intent_id: Uuid) -> Result<bool, sqlx::Error> {
+    let result = sqlx::query(
+        r#"
+        UPDATE signed_agent_intents
+        SET status = 'PROCESSING'
+        WHERE id = $1
+          AND status = 'AUTHORIZED'
+          AND expires_at > NOW()
+        "#,
+    )
+    .bind(intent_id)
+    .execute(pool)
+    .await?;
+
+    Ok(result.rows_affected() == 1)
 }
 
-pub async fn get_agent_catalog_products(
-    pool: &PgPool,
-    category: Option<&str>,
-    search: Option<&str>,
-    limit: i64,
-    offset: i64,
-) -> Result<Vec<AgentCatalogProduct>, sqlx::Error> {
-    sqlx::query_as::<_, AgentCatalogProduct>(
+pub async fn release_signed_intent(pool: &PgPool, intent_id: Uuid) -> Result<bool, sqlx::Error> {
+    let result = sqlx::query(
         r#"
+        UPDATE signed_agent_intents
+        SET status = 'AUTHORIZED'
+        WHERE id = $1
+          AND status = 'PROCESSING'
+          AND expires_at > NOW()
+        "#,
+    )
+    .bind(intent_id)
+    .execute(pool)
+    .await?;
+
+    Ok(result.rows_affected() == 1)
+}
+
+pub async fn create_checkout_for_intent(
+    pool: &PgPool,
+    intent: &SignedAgentIntent,
+    razorpay_order_id: &str,
+) -> Result<Uuid, sqlx::Error> {
+    let mut tx = pool.begin().await?;
+
+    let customer_id: Uuid = sqlx::query_scalar(
+        r#"
+        SELECT customer_id
+        FROM agent_sessions
+        WHERE id = $1
+        "#,
+    )
+    .bind(intent.payload.session_id)
+    .fetch_one(&mut *tx)
+    .await?;
+
+    let cart_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO carts (
+            session_id,
+            status,
+            subtotal,
+            discount,
+            delivery_fee,
+            total,
+            currency
+        )
+        VALUES (
+            $1,
+            'CHECKOUT'::cart_status,
+            $2,
+            0,
+            0,
+            $2,
+            $3
+        )
+        RETURNING id
+        "#,
+    )
+    .bind(intent.payload.session_id)
+    .bind(intent.payload.amount)
+    .bind(&intent.payload.currency)
+    .fetch_one(&mut *tx)
+    .await?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO cart_items (
+            cart_id,
+            product_id,
+            product_name,
+            quantity,
+            unit_price,
+            total_price
+        )
         SELECT
+            $1,
             p.id,
             p.name,
-            p.category,
+            1,
             p.price,
-            p.stock,
-            p.rating,
-            p.reviews,
-            p.cross_sell_score,
-            p.conversion_rate,
-            p.recommendation_priority
+            p.price
         FROM products p
-        WHERE
-            ($1::text IS NULL OR p.category = $1)
-            AND
-            (
-                $2::text IS NULL
-                OR p.name ILIKE '%' || $2 || '%'
-            )
-        ORDER BY
-            CASE
-                WHEN p.stock > 0 THEN 0
-                ELSE 1
-            END,
-            p.conversion_rate DESC NULLS LAST
-        LIMIT $3
-        OFFSET $4
+        WHERE p.id = ANY($2)
         "#,
     )
-    .bind(category)
-    .bind(search)
-    .bind(limit)
-    .bind(offset)
-    .fetch_all(pool)
-    .await
-}
+    .bind(cart_id)
+    .bind(&intent.payload.product_ids)
+    .execute(&mut *tx)
+    .await?;
 
-#[derive(Debug, sqlx::FromRow)]
-pub struct CheckoutProduct {
-    pub id: uuid::Uuid,
-    pub price: i64,
-    pub stock: i32,
-    pub category: String,
-}
-
-pub async fn get_checkout_products(
-    pool: &PgPool,
-    product_ids: &[uuid::Uuid],
-) -> Result<Vec<CheckoutProduct>, sqlx::Error> {
-    sqlx::query_as::<_, CheckoutProduct>(
+    let checkout_id: Uuid = sqlx::query_scalar(
         r#"
-        SELECT
-            id,
-            price,
-            stock,
-            category
-        FROM products
-        WHERE id = ANY($1)
+        INSERT INTO checkouts (
+            session_id,
+            customer_id,
+            cart_id,
+            amount,
+            currency,
+            status,
+            razorpay_order_id,
+            agent_intent_id
+        )
+        VALUES (
+            $1,
+            $2,
+            $3,
+            $4,
+            $5,
+            'PENDING'::checkout_status,
+            $6,
+            $7
+        )
+        ON CONFLICT (agent_intent_id)
+        DO UPDATE SET
+            razorpay_order_id = EXCLUDED.razorpay_order_id,
+            status = 'PENDING'::checkout_status,
+            updated_at = NOW()
+        RETURNING id
         "#,
     )
+    .bind(intent.payload.session_id)
+    .bind(customer_id)
+    .bind(cart_id)
+    .bind(intent.payload.amount)
+    .bind(&intent.payload.currency)
+    .bind(razorpay_order_id)
+    .bind(intent.payload.intent_id)
+    .fetch_one(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+
+    Ok(checkout_id)
+}
+
+pub async fn reserve_inventory(
+    pool: &PgPool,
+    intent_id: Uuid,
+    product_ids: &[Uuid],
+    expires_at: DateTime<Utc>,
+) -> Result<bool, sqlx::Error> {
+    let result = sqlx::query(
+        r#"
+        WITH requested AS (
+            SELECT DISTINCT unnest($2::uuid[]) AS product_id
+        ),
+        locked_products AS (
+            SELECT p.id, p.stock
+            FROM products p
+            JOIN requested r ON r.product_id = p.id
+            WHERE p.active = TRUE
+            FOR UPDATE OF p
+        ),
+        available AS (
+            SELECT lp.id AS product_id
+            FROM locked_products lp
+            WHERE lp.stock > (
+                SELECT COUNT(*)::bigint
+                FROM inventory_reservations ir
+                WHERE ir.product_id = lp.id
+                  AND ir.status = 'RESERVED'::inventory_reservation_status
+                  AND ir.expires_at > NOW()
+            )
+        )
+        INSERT INTO inventory_reservations (
+            intent_id,
+            product_id,
+            quantity,
+            status,
+            expires_at
+        )
+        SELECT
+            $1,
+            product_id,
+            1,
+            'RESERVED'::inventory_reservation_status,
+            $3
+        FROM available
+        ON CONFLICT (intent_id, product_id) DO NOTHING
+        "#,
+    )
+    .bind(intent_id)
     .bind(product_ids)
-    .fetch_all(pool)
+    .bind(expires_at)
+    .execute(pool)
+    .await?;
+
+    Ok(result.rows_affected() as usize
+        == product_ids
+            .iter()
+            .copied()
+            .collect::<std::collections::HashSet<_>>()
+            .len())
+}
+
+pub async fn release_inventory(pool: &PgPool, intent_id: Uuid) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r#"
+        UPDATE inventory_reservations
+        SET
+            status = 'RELEASED'::inventory_reservation_status,
+            updated_at = NOW()
+        WHERE intent_id = $1
+          AND status = 'RESERVED'::inventory_reservation_status
+        "#,
+    )
+    .bind(intent_id)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+pub async fn complete_inventory(pool: &PgPool, intent_id: Uuid) -> Result<(), sqlx::Error> {
+    let mut tx = pool.begin().await?;
+
+    sqlx::query(
+        r#"
+        UPDATE products p
+        SET
+            stock = p.stock - ir.quantity,
+            updated_at = NOW()
+        FROM inventory_reservations ir
+        WHERE ir.intent_id = $1
+          AND ir.product_id = p.id
+          AND ir.status = 'RESERVED'::inventory_reservation_status
+          AND p.stock >= ir.quantity
+        "#,
+    )
+    .bind(intent_id)
+    .execute(&mut *tx)
+    .await?;
+
+    sqlx::query(
+        r#"
+        UPDATE inventory_reservations
+        SET
+            status = 'COMPLETED'::inventory_reservation_status,
+            updated_at = NOW()
+        WHERE intent_id = $1
+          AND status = 'RESERVED'::inventory_reservation_status
+        "#,
+    )
+    .bind(intent_id)
+    .execute(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+
+    Ok(())
+}
+
+pub async fn create_agent_decision(
+    pool: &PgPool,
+    session_id: Uuid,
+    intent_id: Option<Uuid>,
+    decision_type: &str,
+    reasoning: &str,
+    confidence: f64,
+    recommendation: Value,
+    cart_id: Option<Uuid>,
+    requires_confirmation: bool,
+) -> Result<Uuid, sqlx::Error> {
+    sqlx::query_scalar(
+        r#"
+        INSERT INTO agent_decisions (
+            session_id,
+            intent_id,
+            decision_type,
+            reasoning,
+            confidence,
+            recommendation,
+            cart_id,
+            requires_confirmation
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        RETURNING id
+        "#,
+    )
+    .bind(session_id)
+    .bind(intent_id)
+    .bind(decision_type)
+    .bind(reasoning)
+    .bind(confidence)
+    .bind(recommendation)
+    .bind(cart_id)
+    .bind(requires_confirmation)
+    .fetch_one(pool)
     .await
+}
+
+pub async fn create_audit_event(
+    pool: &PgPool,
+    session_id: Uuid,
+    event_type: &str,
+    actor: &str,
+    status: &str,
+    message: &str,
+    metadata: Value,
+) -> Result<Uuid, sqlx::Error> {
+    sqlx::query_scalar(
+        r#"
+        INSERT INTO audit_events (
+            session_id,
+            event_type,
+            actor,
+            status,
+            message,
+            metadata
+        )
+        VALUES ($1, $2, $3::audit_actor, $4, $5, $6)
+        RETURNING id
+        "#,
+    )
+    .bind(session_id)
+    .bind(event_type)
+    .bind(actor)
+    .bind(status)
+    .bind(message)
+    .bind(metadata)
+    .fetch_one(pool)
+    .await
+}
+
+pub async fn insert_webhook_event(
+    pool: &PgPool,
+    event: &WebhookEventInsert,
+) -> Result<bool, sqlx::Error> {
+    let result = sqlx::query(
+        r#"
+        INSERT INTO webhook_events (
+            provider,
+            event_id,
+            event_type,
+            razorpay_order_id,
+            razorpay_payment_id,
+            payload
+        )
+        VALUES ('razorpay', $1, $2, $3, $4, $5)
+        ON CONFLICT (provider, event_id) DO NOTHING
+        "#,
+    )
+    .bind(&event.event_id)
+    .bind(&event.event_type)
+    .bind(&event.razorpay_order_id)
+    .bind(&event.razorpay_payment_id)
+    .bind(&event.payload)
+    .execute(pool)
+    .await?;
+
+    Ok(result.rows_affected() == 1)
+}
+
+pub async fn mark_webhook_processed(pool: &PgPool, event_id: &str) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r#"
+        UPDATE webhook_events
+        SET
+            status = 'PROCESSED',
+            processed_at = NOW()
+        WHERE provider = 'razorpay'
+          AND event_id = $1
+        "#,
+    )
+    .bind(event_id)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+pub async fn mark_webhook_failed(pool: &PgPool, event_id: &str) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r#"
+        UPDATE webhook_events
+        SET
+            status = 'FAILED',
+            processed_at = NOW()
+        WHERE provider = 'razorpay'
+          AND event_id = $1
+        "#,
+    )
+    .bind(event_id)
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+pub async fn update_checkout_from_razorpay(
+    pool: &PgPool,
+    razorpay_order_id: &str,
+    checkout_status: &str,
+) -> Result<Option<Uuid>, sqlx::Error> {
+    sqlx::query_scalar(
+        r#"
+        UPDATE checkouts
+        SET
+            status = $2::checkout_status,
+            updated_at = NOW()
+        WHERE razorpay_order_id = $1
+        RETURNING session_id
+        "#,
+    )
+    .bind(razorpay_order_id)
+    .bind(checkout_status)
+    .fetch_optional(pool)
+    .await
+}
+
+pub async fn get_checkout_reconciliation(
+    pool: &PgPool,
+    razorpay_order_id: &str,
+) -> Result<Option<(Uuid, Uuid)>, sqlx::Error> {
+    sqlx::query_as(
+        r#"
+        SELECT session_id, agent_intent_id
+        FROM checkouts
+        WHERE razorpay_order_id = $1
+          AND agent_intent_id IS NOT NULL
+        "#,
+    )
+    .bind(razorpay_order_id)
+    .fetch_optional(pool)
+    .await
+}
+
+pub async fn finalize_paid_intent(pool: &PgPool, intent_id: Uuid) -> Result<bool, sqlx::Error> {
+    let result = sqlx::query(
+        r#"
+        UPDATE signed_agent_intents
+        SET status = 'CONSUMED'
+        WHERE id = $1
+          AND status = 'PROCESSING'
+        "#,
+    )
+    .bind(intent_id)
+    .execute(pool)
+    .await?;
+
+    Ok(result.rows_affected() == 1)
+}
+
+pub async fn release_failed_intent(pool: &PgPool, intent_id: Uuid) -> Result<bool, sqlx::Error> {
+    let result = sqlx::query(
+        r#"
+        UPDATE signed_agent_intents
+        SET status = 'AUTHORIZED'
+        WHERE id = $1
+          AND status = 'PROCESSING'
+        "#,
+    )
+    .bind(intent_id)
+    .execute(pool)
+    .await?;
+
+    Ok(result.rows_affected() == 1)
 }

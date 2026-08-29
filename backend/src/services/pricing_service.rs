@@ -28,12 +28,50 @@ pub async fn calculate_checkout(
         ));
     }
 
+    let first = products
+        .first()
+        .ok_or_else(|| AppError::Validation("Checkout contains no products".to_string()))?;
+
+    let currency = first.currency.trim().to_uppercase();
+
+    if currency.len() != 3 {
+        return Err(AppError::Validation("Invalid product currency".to_string()));
+    }
+
+    let category = first.category.trim().to_string();
+
+    if category.is_empty() {
+        return Err(AppError::Validation(
+            "Product category cannot be empty".to_string(),
+        ));
+    }
+
     let mut amount: i64 = 0;
 
     for product in &products {
+        if !product.active {
+            return Err(AppError::Validation(format!(
+                "Product {} is inactive",
+                product.id
+            )));
+        }
+
         if product.stock <= 0 {
             return Err(AppError::Validation(format!(
                 "Product {} is out of stock",
+                product.id
+            )));
+        }
+
+        if product.currency.trim().to_uppercase() != currency {
+            return Err(AppError::Validation(
+                "Products with different currencies cannot be combined".to_string(),
+            ));
+        }
+
+        if product.price < 0 {
+            return Err(AppError::Validation(format!(
+                "Product {} has an invalid price",
                 product.id
             )));
         }
@@ -43,14 +81,15 @@ pub async fn calculate_checkout(
             .ok_or_else(|| AppError::Validation("Checkout amount overflow".to_string()))?;
     }
 
-    let category = products
-        .first()
-        .map(|p| p.category.clone())
-        .unwrap_or_default();
+    if amount <= 0 {
+        return Err(AppError::Validation(
+            "Checkout total must be positive".to_string(),
+        ));
+    }
 
     Ok(TrustedCheckout {
         amount,
-        currency: "INR".to_string(),
+        currency,
         category,
     })
 }
