@@ -12,8 +12,6 @@ pub struct CheckoutRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecuteCheckoutRequest {
     pub session_id: Uuid,
-    pub customer_id: Uuid,
-    pub merchant_id: Uuid,
     pub intent_id: Uuid,
     pub confirmation_token: Option<String>,
 }

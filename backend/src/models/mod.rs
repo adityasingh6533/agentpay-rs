@@ -1,13 +1,13 @@
+pub mod agent_catalog;
 pub mod audit;
-pub mod campaign;
 pub mod checkout;
 pub mod confirmation;
 pub mod customer;
-pub mod order;
 pub mod policy;
 pub mod product;
 pub mod signed_intent;
 
+pub use agent_catalog::{AgentCapabilities, AgentCatalog, AgentProduct};
 pub use audit::AuditEvent;
 pub use checkout::{
     CheckoutAuthorization, CheckoutRequest, CheckoutResponse, ExecuteCheckoutRequest,

@@ -3,7 +3,6 @@ import {
   Bot,
   Check,
   ChevronDown,
-  ChevronRight,
   Clock3,
   CreditCard,
   Eye,

@@ -57,6 +57,8 @@ impl AgentOrchestrator {
                 .await?
                 .map(
                     |opportunity| crate::agent::decision::CrossSellRecommendation {
+                        source_product_id: opportunity.source_product,
+
                         product_id: opportunity.recommended_product.id,
 
                         product_name: opportunity.recommended_product.name.clone(),
@@ -162,7 +164,7 @@ Confidence must be between 0 and 1.
             ],
         };
 
-        let response = self
+        let response = match self
             .client
             .post(format!(
                 "{}/chat/completions",
@@ -172,39 +174,59 @@ Confidence must be between 0 and 1.
             .json(&request)
             .send()
             .await
-            .map_err(|error| {
-                tracing::error!(?error, "AI provider request failed");
+        {
+            Ok(response) => response,
 
-                AppError::Internal
-            })?;
+            Err(error) => {
+                tracing::warn!(
+                    ?error,
+                    "AI provider request failed; falling back to deterministic demo intent"
+                );
+
+                return Ok(extract_demo_intent(message));
+            }
+        };
 
         if !response.status().is_success() {
-            tracing::error!(
+            tracing::warn!(
                 status = %response.status(),
-                "AI provider returned an error"
+                "AI provider returned an error; falling back to deterministic demo intent"
             );
 
-            return Err(AppError::Internal);
+            return Ok(extract_demo_intent(message));
         }
 
-        let body: ChatResponse = response.json().await.map_err(|error| {
-            tracing::error!(?error, "invalid AI provider response");
+        let body: ChatResponse = match response.json().await {
+            Ok(body) => body,
 
-            AppError::Internal
-        })?;
+            Err(error) => {
+                tracing::warn!(
+                    ?error,
+                    "Invalid AI provider response; falling back to deterministic demo intent"
+                );
 
-        let content = body
-            .choices
-            .first()
-            .ok_or(AppError::Internal)?
+                return Ok(extract_demo_intent(message));
+            }
+        };
+
+        let Some(choice) = body.choices.first() else {
+            tracing::warn!("AI provider returned no choices; falling back to deterministic demo intent");
+
+            return Ok(extract_demo_intent(message));
+        };
+
+        let content = choice
             .message
             .content
             .trim();
 
-        serde_json::from_str::<CustomerIntent>(content).map_err(|error| {
-            tracing::error!(?error, "AI returned invalid intent JSON");
+        serde_json::from_str::<CustomerIntent>(content).or_else(|error| {
+            tracing::warn!(
+                ?error,
+                "AI returned invalid intent JSON; falling back to deterministic demo intent"
+            );
 
-            AppError::Internal
+            Ok(extract_demo_intent(message))
         })
     }
 

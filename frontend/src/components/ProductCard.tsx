@@ -41,7 +41,8 @@ function ProductCard({
   onAdd,
   onSelect,
 }: ProductCardProps) {
-  const [liked, setLiked] = useState(false);
+  const [liked, setLiked] =
+    useState(false);
 
   const handleAdd = () => {
     onAdd?.(product);
@@ -61,22 +62,34 @@ function ProductCard({
             className={`product-heart ${
               liked ? "liked" : ""
             }`}
-            onClick={() => setLiked((value) => !value)}
+            onClick={() =>
+              setLiked(
+                (value) => !value
+              )
+            }
             aria-label="Toggle favorite"
           >
             <Heart
               size={12}
-              fill={liked ? "currentColor" : "none"}
+              fill={
+                liked
+                  ? "currentColor"
+                  : "none"
+              }
             />
           </button>
         </div>
 
         <div className="compact-product-info">
           <div>
-            <strong>{product.name}</strong>
+            <strong>
+              {product.name}
+            </strong>
 
             {product.category && (
-              <span>{product.category}</span>
+              <span>
+                {product.category}
+              </span>
             )}
           </div>
 
@@ -96,8 +109,6 @@ function ProductCard({
           : ""
       }`}
     >
-      {/* PRODUCT IMAGE */}
-
       <div className="product-card-image">
         <Package size={38} />
 
@@ -105,12 +116,20 @@ function ProductCard({
           className={`product-heart ${
             liked ? "liked" : ""
           }`}
-          onClick={() => setLiked((value) => !value)}
+          onClick={() =>
+            setLiked(
+              (value) => !value
+            )
+          }
           aria-label="Toggle favorite"
         >
           <Heart
             size={14}
-            fill={liked ? "currentColor" : "none"}
+            fill={
+              liked
+                ? "currentColor"
+                : "none"
+            }
           />
         </button>
 
@@ -121,18 +140,12 @@ function ProductCard({
         )}
       </div>
 
-      {/* PRODUCT INFO */}
-
       <div className="product-card-info">
-        {/* CATEGORY */}
-
         {product.category && (
           <span className="product-category">
             {product.category}
           </span>
         )}
-
-        {/* RATING */}
 
         {product.rating !== undefined && (
           <div className="product-rating">
@@ -153,17 +166,11 @@ function ProductCard({
           </div>
         )}
 
-        {/* NAME */}
-
         <h3>{product.name}</h3>
-
-        {/* DESCRIPTION */}
 
         {product.description && (
           <p>{product.description}</p>
         )}
-
-        {/* AI SIGNAL */}
 
         {showAI &&
           (product.aiScore !== undefined ||
@@ -177,13 +184,15 @@ function ProductCard({
                 <span>AI SIGNAL</span>
 
                 <strong>
-                  {product.aiScore !== undefined
+                  {product.aiScore !==
+                  undefined
                     ? `${product.aiScore}% match`
                     : `${product.crossSell} cross-sell`}
                 </strong>
               </div>
 
-              {product.crossSell === "HIGH" && (
+              {product.crossSell ===
+                "HIGH" && (
                 <TrendingUp
                   className="ai-trend"
                   size={11}
@@ -191,8 +200,6 @@ function ProductCard({
               )}
             </div>
           )}
-
-        {/* BOTTOM */}
 
         <div className="product-card-bottom">
           <div className="product-price">
@@ -216,17 +223,17 @@ function ProductCard({
             )}
         </div>
 
-        {/* ACTION */}
-
         <button
           className="product-card-action"
           onClick={
-            variant === "recommendation"
+            variant ===
+            "recommendation"
               ? handleSelect
               : handleAdd
           }
         >
-          {variant === "recommendation" ? (
+          {variant ===
+          "recommendation" ? (
             <>
               <Sparkles size={12} />
               Select for customer
@@ -244,7 +251,9 @@ function ProductCard({
 }
 
 function formatPrice(price: number) {
-  return `₹${price.toLocaleString("en-IN")}`;
+  return `₹${price.toLocaleString(
+    "en-IN"
+  )}`;
 }
 
 export default ProductCard;

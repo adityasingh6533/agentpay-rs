@@ -1,4 +1,4 @@
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -45,21 +45,4 @@ pub async fn release_checkout_inventory(pool: &PgPool, intent_id: Uuid) -> Resul
     queries::release_inventory(pool, intent_id).await?;
 
     Ok(())
-}
-
-/// Marks reserved inventory as permanently consumed.
-///
-/// This is called only after payment has been confirmed.
-pub async fn complete_checkout_inventory(pool: &PgPool, intent_id: Uuid) -> Result<(), AppError> {
-    queries::complete_inventory(pool, intent_id).await?;
-
-    Ok(())
-}
-
-/// Default checkout inventory reservation window.
-///
-/// Inventory remains locked for 15 minutes while
-/// the customer completes payment.
-pub fn default_reservation_expiry() -> DateTime<Utc> {
-    Utc::now() + Duration::minutes(15)
 }

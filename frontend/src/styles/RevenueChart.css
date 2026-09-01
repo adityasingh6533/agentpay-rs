@@ -1,0 +1,178 @@
+.revenue-chart-card {
+  width: 100%;
+  min-height: 360px;
+
+  display: flex;
+  flex-direction: column;
+
+  overflow: hidden;
+
+  border: 1px solid #20232c;
+  border-radius: 11px;
+
+  background: #101117;
+}
+
+.revenue-chart-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+
+  padding: 15px 16px 13px;
+
+  border-bottom: 1px solid #20232c;
+}
+
+.revenue-chart-header > div:first-child {
+  min-width: 0;
+}
+
+.revenue-chart-header span,
+.revenue-chart-metrics span {
+  display: block;
+
+  color: #626673;
+
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.8px;
+}
+
+.revenue-chart-header h3 {
+  margin: 5px 0 4px;
+
+  color: #d2d4dc;
+
+  font-size: 15px;
+  font-weight: 760;
+}
+
+.revenue-chart-header p {
+  margin: 0;
+
+  color: #737784;
+
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.revenue-period {
+  flex-shrink: 0;
+
+  padding: 6px 8px;
+
+  border: 1px solid rgba(132, 100, 255, 0.15);
+  border-radius: 6px;
+
+  color: #a38cff;
+  background: rgba(132, 100, 255, 0.07);
+}
+
+.revenue-period span {
+  color: #a38cff;
+  font-size: 7px;
+}
+
+.revenue-chart-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+
+  border-bottom: 1px solid #20232c;
+}
+
+.revenue-chart-metrics > div {
+  min-width: 0;
+
+  padding: 11px 14px;
+
+  border-right: 1px solid #20232c;
+}
+
+.revenue-chart-metrics > div:last-child {
+  border-right: 0;
+}
+
+.revenue-chart-metrics strong {
+  display: block;
+
+  margin-top: 5px;
+
+  color: #d7d9e0;
+
+  font-size: 15px;
+  font-weight: 780;
+}
+
+.revenue-chart-wrapper {
+  height: 220px;
+  min-height: 220px;
+
+  padding: 12px 12px 14px;
+}
+
+.revenue-chart-wrapper .recharts-cartesian-grid line {
+  stroke-opacity: 0.9;
+}
+
+.revenue-chart-wrapper .recharts-tooltip-cursor {
+  stroke-width: 1;
+}
+
+.revenue-tooltip {
+  min-width: 120px;
+
+  padding: 9px 10px;
+
+  border: 1px solid rgba(132, 100, 255, 0.24);
+  border-radius: 7px;
+
+  background: #15161d;
+  box-shadow: 0 16px 30px rgba(0, 0, 0, 0.28);
+}
+
+.revenue-tooltip span,
+.revenue-tooltip small {
+  display: block;
+
+  color: #777b87;
+
+  font-size: 8px;
+}
+
+.revenue-tooltip strong {
+  display: block;
+
+  margin: 4px 0 3px;
+
+  color: #f0efff;
+
+  font-size: 13px;
+}
+
+@media (max-width: 760px) {
+  .revenue-chart-card {
+    min-height: 390px;
+  }
+
+  .revenue-chart-header {
+    flex-direction: column;
+  }
+
+  .revenue-chart-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .revenue-chart-metrics > div {
+    border-right: 0;
+    border-bottom: 1px solid #20232c;
+  }
+
+  .revenue-chart-metrics > div:last-child {
+    border-bottom: 0;
+  }
+
+  .revenue-chart-wrapper {
+    height: 210px;
+  }
+}

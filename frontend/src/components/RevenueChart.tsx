@@ -42,7 +42,8 @@ function RevenueChart({
   );
 
   const totalOrders = data.reduce(
-    (sum, item) => sum + (item.orders ?? 0),
+    (sum, item) =>
+      sum + (item.orders ?? 0),
     0
   );
 
@@ -53,8 +54,6 @@ function RevenueChart({
 
   return (
     <div className="revenue-chart-card">
-      {/* HEADER */}
-
       <div className="revenue-chart-header">
         <div>
           <span>REVENUE ANALYTICS</span>
@@ -69,14 +68,12 @@ function RevenueChart({
         </div>
       </div>
 
-      {/* METRICS */}
-
       <div className="revenue-chart-metrics">
         <div>
           <span>TOTAL REVENUE</span>
 
           <strong>
-            ₹{totalRevenue.toLocaleString("en-IN")}
+            {formatCurrency(totalRevenue)}
           </strong>
         </div>
 
@@ -90,12 +87,10 @@ function RevenueChart({
           <span>AVG / DAY</span>
 
           <strong>
-            ₹{averageRevenue.toLocaleString("en-IN")}
+            {formatCurrency(averageRevenue)}
           </strong>
         </div>
       </div>
-
-      {/* CHART */}
 
       <div className="revenue-chart-wrapper">
         <ResponsiveContainer
@@ -157,7 +152,7 @@ function RevenueChart({
                 fontSize: 8,
               }}
               tickFormatter={(value) =>
-                `₹${value / 1000}k`
+                `₹${Number(value) / 1000}k`
               }
             />
 
@@ -194,28 +189,39 @@ function RevenueTooltip({
   active,
   payload,
   label,
-}: any) {
+}: {
+  active?: boolean;
+  payload?: {
+    value?: number;
+    payload?: RevenuePoint;
+  }[];
+  label?: string;
+}) {
   if (!active || !payload?.length) {
     return null;
   }
 
   const revenue = payload[0]?.value ?? 0;
-
-  const orders = payload[0]?.payload?.orders ?? 0;
+  const orders =
+    payload[0]?.payload?.orders ?? 0;
 
   return (
     <div className="revenue-tooltip">
       <span>{label}</span>
 
       <strong>
-        ₹{Number(revenue).toLocaleString("en-IN")}
+        {formatCurrency(Number(revenue))}
       </strong>
 
-      <small>
-        {orders} orders
-      </small>
+      <small>{orders} orders</small>
     </div>
   );
+}
+
+function formatCurrency(amount: number) {
+  return `₹${amount.toLocaleString(
+    "en-IN"
+  )}`;
 }
 
 export default RevenueChart;

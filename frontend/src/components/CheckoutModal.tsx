@@ -60,9 +60,6 @@ function CheckoutModal({
   const [step, setStep] =
     useState<CheckoutStep>("REVIEW");
 
-  const [checkout, setCheckout] =
-    useState<Checkout | null>(null);
-
   const [razorpayOrderId, setRazorpayOrderId] =
     useState<string | null>(null);
 
@@ -170,10 +167,6 @@ function CheckoutModal({
             sessionId,
             customerId,
           });
-
-        setCheckout(
-          createdCheckout
-        );
 
         /*
          * STEP 2

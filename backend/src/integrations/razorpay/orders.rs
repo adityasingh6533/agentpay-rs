@@ -33,8 +33,12 @@ pub async fn create_order(
         return Err("Razorpay amount must be positive".to_string());
     }
 
+    let razorpay_amount = amount
+        .checked_mul(100)
+        .ok_or_else(|| "Razorpay amount overflow".to_string())?;
+
     let request = CreateRazorpayOrder {
-        amount,
+        amount: razorpay_amount,
         currency: currency.to_string(),
         receipt: receipt.to_string(),
         notes,

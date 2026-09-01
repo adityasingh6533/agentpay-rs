@@ -25,7 +25,6 @@ import {
 function ChatPanel() {
   const {
     status,
-    decision,
     currentRecommendation,
     auditTrail,
     isLoading,
@@ -35,17 +34,38 @@ function ChatPanel() {
     needsReview,
     isBlocked,
 
+    agentResult,
+    authorization,
+    checkoutResult,
+
     sendMessage,
+    authorizeCheckout,
     confirmAction,
+    executeCheckout,
+
     loadAuditTrail,
     clearError,
   } = useAgentContext();
 
   const [message, setMessage] =
     useState("");
+  const [
+    submittedMessage,
+    setSubmittedMessage,
+  ] = useState("");
 
   const [hasStarted, setHasStarted] =
     useState(false);
+
+  const [
+    merchantId,
+    setMerchantId,
+  ] = useState(
+    () =>
+      process.env
+        .REACT_APP_MERCHANT_ID ||
+      "40000000-0000-0000-0000-000000000001"
+  );
 
   useEffect(() => {
     if (hasStarted) {
@@ -56,6 +76,10 @@ function ChatPanel() {
     hasStarted,
     loadAuditTrail,
   ]);
+
+  /* =========================================================
+     SEND MESSAGE
+     ========================================================= */
 
   const handleSubmit = async (
     event: FormEvent
@@ -75,16 +99,77 @@ function ChatPanel() {
     clearError();
 
     setHasStarted(true);
+    setSubmittedMessage(trimmed);
     setMessage("");
 
-    await sendMessage(trimmed);
+    await sendMessage(
+      trimmed
+    );
   };
+
+  /* =========================================================
+     AUTHORIZE
+     ========================================================= */
+
+  const handleAuthorize =
+    async () => {
+      if (!merchantId.trim()) {
+        clearError();
+
+        /*
+         * We deliberately don't invent
+         * a merchant UUID.
+         */
+        window.alert(
+          "Merchant ID is required for secure checkout authorization."
+        );
+
+        return;
+      }
+
+      await authorizeCheckout(
+        merchantId.trim()
+      );
+
+      await loadAuditTrail();
+    };
+
+  /* =========================================================
+     CONFIRM
+     ========================================================= */
 
   const handleConfirm =
     async () => {
       await confirmAction();
+
       await loadAuditTrail();
     };
+
+  /* =========================================================
+     EXECUTE
+     ========================================================= */
+
+  const handleExecute =
+    async () => {
+      await executeCheckout();
+
+      await loadAuditTrail();
+    };
+
+  const runPrompt = async (
+    prompt: string
+  ) => {
+    if (isLoading) {
+      return;
+    }
+
+    clearError();
+    setHasStarted(true);
+    setSubmittedMessage(prompt);
+    setMessage("");
+
+    await sendMessage(prompt);
+  };
 
   return (
     <div className="chat-panel">
@@ -132,7 +217,9 @@ function ChatPanel() {
             }
           />
 
-          {formatStatus(status)}
+          {formatStatus(
+            status
+          )}
 
         </div>
 
@@ -155,9 +242,10 @@ function ChatPanel() {
 
             <p>
               Tell the agent what the customer
-              wants. It will search the catalog,
-              reason over the request and evaluate
-              policy before proposing an action.
+              wants. It will understand the request,
+              search the merchant catalog and return
+              a recommendation before any financial
+              action is attempted.
             </p>
 
             <div className="chat-capabilities">
@@ -185,6 +273,30 @@ function ChatPanel() {
 
             </div>
 
+            <div className="chat-demo-prompts">
+              <button
+                type="button"
+                onClick={() =>
+                  runPrompt(
+                    "I need running shoes under 1500"
+                  )
+                }
+              >
+                Running bundle
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  runPrompt(
+                    "I need a sports jacket under 2000"
+                  )
+                }
+              >
+                Confirmation gate
+              </button>
+            </div>
+
           </div>
         )}
 
@@ -202,7 +314,8 @@ function ChatPanel() {
               </span>
 
               <div className="chat-bubble customer">
-                Customer request submitted
+                {submittedMessage ||
+                  "Customer request submitted"}
               </div>
 
             </div>
@@ -232,7 +345,9 @@ function ChatPanel() {
                 </div>
 
                 <strong>
-                  {formatStatus(status)}
+                  {formatStatus(
+                    status
+                  )}
                 </strong>
 
               </div>
@@ -243,7 +358,7 @@ function ChatPanel() {
         )}
 
         {!isLoading &&
-          decision && (
+          agentResult && (
             <div className="chat-agent-result">
 
               <div className="chat-message-avatar agent">
@@ -256,17 +371,31 @@ function ChatPanel() {
                   AGENTPAY AI
                 </span>
 
+                {/* AGENT RESPONSE */}
+
                 <div className="chat-bubble agent">
 
                   <strong>
-                    Agent decision ready.
+                    Agent analysis complete.
                   </strong>
 
                   <p>
-                    {decision.reasoning}
+                    {agentResult.message}
                   </p>
 
+                  <small>
+                    Intent confidence:{" "}
+                    {Math.round(
+                      agentResult.intent
+                        .confidence *
+                        100
+                    )}
+                    %
+                  </small>
+
                 </div>
+
+                {/* RECOMMENDATION */}
 
                 {currentRecommendation && (
                   <div className="chat-recommendation">
@@ -284,7 +413,8 @@ function ChatPanel() {
                       <strong>
                         {
                           currentRecommendation
-                            .product.name
+                            .product
+                            .name
                         }
                       </strong>
 
@@ -300,10 +430,11 @@ function ChatPanel() {
                     <div className="chat-recommendation-score">
 
                       <strong>
-                        {
+                        {Math.round(
                           currentRecommendation
                             .matchScore
-                        }%
+                        )}
+                        %
                       </strong>
 
                       <span>
@@ -315,55 +446,186 @@ function ChatPanel() {
                   </div>
                 )}
 
-                {/* POLICY */}
+                {/* CROSS SELL */}
 
-                <div className="chat-policy">
+                {agentResult.cross_sell && (
+                  <div className="chat-recommendation">
 
-                  <div className="chat-policy-title">
+                    <div className="chat-recommendation-icon">
+                      <Sparkles size={14} />
+                    </div>
 
-                    <ShieldAlert size={12} />
+                    <div className="chat-recommendation-info">
 
-                    <span>
-                      POLICY CHECK
-                    </span>
+                      <span>
+                        AI CROSS-SELL
+                      </span>
+
+                      <strong>
+                        {
+                          agentResult
+                            .cross_sell
+                            .product_name
+                        }
+                      </strong>
+
+                      <p>
+                        ₹
+                        {
+                          agentResult
+                            .cross_sell
+                            .price
+                        }
+                        {" · "}
+                        {Math.round(
+                          agentResult
+                            .cross_sell
+                            .confidence *
+                            100
+                        )}
+                        % confidence
+                      </p>
+
+                    </div>
 
                   </div>
+                )}
 
-                  <div className="chat-policy-list">
+                {/* MERCHANT ID */}
 
-                    {decision.guardrails.map(
-                      (guardrail) => (
-                        <div
-                          key={
-                            guardrail.id
+                {agentResult &&
+                  !authorization && (
+                    <div className="chat-confirmation">
+
+                      <div>
+
+                        <strong>
+                          Secure checkout authorization
+                        </strong>
+
+                        <p>
+                          The agent recommendation is
+                          not a payment authorization.
+                          Enter the merchant ID to run
+                          the backend policy and signed
+                          intent checks.
+                        </p>
+
+                      </div>
+
+                      <div
+                        style={{
+                          display:
+                            "flex",
+                          gap: "8px",
+                          width:
+                            "100%",
+                        }}
+                      >
+
+                        <input
+                          value={
+                            merchantId
                           }
-                          className={`chat-policy-item ${guardrail.status.toLowerCase()}`}
+                          onChange={(
+                            event
+                          ) =>
+                            setMerchantId(
+                              event
+                                .target
+                                .value
+                            )
+                          }
+                          placeholder="Merchant ID"
+                        />
+
+                        <button
+                          onClick={
+                            handleAuthorize
+                          }
+                          disabled={
+                            isLoading ||
+                            !merchantId.trim()
+                          }
                         >
+                          <ShieldAlert
+                            size={13}
+                          />
 
-                          {guardrail.status ===
-                          "PASS" ? (
-                            <Check size={10} />
-                          ) : (
-                            <XCircle size={10} />
-                          )}
+                          Authorize
+                        </button>
 
-                          <span>
-                            {guardrail.name}
-                          </span>
+                      </div>
 
-                          <strong>
-                            {
-                              guardrail.status
-                            }
-                          </strong>
+                    </div>
+                  )}
 
-                        </div>
-                      )
-                    )}
+                {/* AUTHORIZATION RESULT */}
+
+                {authorization && (
+                  <div className="chat-policy">
+
+                    <div className="chat-policy-title">
+
+                      <ShieldAlert size={12} />
+
+                      <span>
+                        AUTHORIZATION RESULT
+                      </span>
+
+                    </div>
+
+                    <div className="chat-policy-list">
+
+                      <div className="chat-policy-item">
+
+                        <Check size={10} />
+
+                        <span>
+                          Decision
+                        </span>
+
+                        <strong>
+                          {
+                            authorization
+                              .decision
+                          }
+                        </strong>
+
+                      </div>
+
+                      <div className="chat-policy-item">
+
+                        <Check size={10} />
+
+                        <span>
+                          Intent
+                        </span>
+
+                        <strong>
+                          {
+                            authorization
+                              .intent_id
+                          }
+                        </strong>
+
+                      </div>
+
+                    </div>
+
+                    <p
+                      style={{
+                        marginTop:
+                          "8px",
+                      }}
+                    >
+                      {
+                        authorization.reason
+                      }
+                    </p>
 
                   </div>
-
-                </div>
+                )}
 
                 {/* CONFIRMATION */}
 
@@ -377,8 +639,8 @@ function ChatPanel() {
                       </strong>
 
                       <p>
-                        The agent cannot authorize
-                        the transaction without explicit
+                        The agent cannot proceed
+                        without explicit customer
                         confirmation.
                       </p>
 
@@ -402,6 +664,114 @@ function ChatPanel() {
                   </div>
                 )}
 
+                {/* EXECUTION */}
+
+                {authorization?.decision ===
+                  "AUTHORIZED" &&
+                  status ===
+                    "AUTHORIZED" && (
+                    <div className="chat-confirmation">
+
+                      <div>
+
+                        <strong>
+                          Authorization verified
+                        </strong>
+
+                        <p>
+                          The signed intent has
+                          passed the authorization
+                          boundary. Execute only after
+                          confirmation requirements
+                          are satisfied.
+                        </p>
+
+                      </div>
+
+                      <button
+                        onClick={
+                          handleExecute
+                        }
+                        disabled={
+                          isLoading
+                        }
+                      >
+
+                        <Check size={13} />
+
+                        Create Razorpay Order
+
+                      </button>
+
+                    </div>
+                  )}
+
+                {checkoutResult && (
+                  <div className="chat-policy">
+
+                    <div className="chat-policy-title">
+
+                      <Check size={12} />
+
+                      <span>
+                        RAZORPAY ORDER CREATED
+                      </span>
+
+                    </div>
+
+                    <div className="chat-policy-list">
+
+                      <div className="chat-policy-item">
+
+                        <Check size={10} />
+
+                        <span>
+                          Status
+                        </span>
+
+                        <strong>
+                          {
+                            checkoutResult
+                              .status
+                          }
+                        </strong>
+
+                      </div>
+
+                      <div className="chat-policy-item">
+
+                        <Check size={10} />
+
+                        <span>
+                          Order
+                        </span>
+
+                        <strong>
+                          {
+                            checkoutResult
+                              .razorpay_order_id ||
+                            "Pending"
+                          }
+                        </strong>
+
+                      </div>
+
+                    </div>
+
+                    <p
+                      style={{
+                        marginTop:
+                          "8px",
+                      }}
+                    >
+                      {
+                        checkoutResult.message
+                      }
+                    </p>
+
+                  </div>
+                )}
+
                 {/* REVIEW */}
 
                 {needsReview && (
@@ -416,8 +786,8 @@ function ChatPanel() {
                       </strong>
 
                       <p>
-                        The agent detected a policy
-                        condition that requires review.
+                        The policy engine detected
+                        a condition requiring review.
                         No transaction has been executed.
                       </p>
 
@@ -440,9 +810,9 @@ function ChatPanel() {
                       </strong>
 
                       <p>
-                        The agent refused to execute
-                        the action because a guardrail
-                        was violated.
+                        The backend policy engine
+                        refused the financial action.
+                        No payment should be executed.
                       </p>
 
                     </div>
@@ -523,7 +893,9 @@ function ChatPanel() {
               ? "Agent is processing..."
               : "Tell the agent what the customer needs..."
           }
-          disabled={isLoading}
+          disabled={
+            isLoading
+          }
         />
 
         <button
@@ -542,6 +914,10 @@ function ChatPanel() {
   );
 }
 
+/* =========================================================
+   CAPABILITY
+   ========================================================= */
+
 function Capability({
   icon,
   text,
@@ -551,20 +927,29 @@ function Capability({
 }) {
   return (
     <div className="chat-capability">
+
       {icon}
 
       <span>
         {text}
       </span>
+
     </div>
   );
 }
+
+/* =========================================================
+   STATUS
+   ========================================================= */
 
 function formatStatus(
   status: string
 ) {
   return status
-    .replaceAll("_", " ")
+    .replaceAll(
+      "_",
+      " "
+    )
     .toLowerCase()
     .replace(
       /\b\w/g,

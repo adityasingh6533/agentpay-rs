@@ -154,12 +154,14 @@ pub async fn prepare_checkout(
         .await;
     }
 
-    let policy_decision = crate::agent::policy::evaluate_transaction(
-        policy,
+    let policy_decision = crate::services::policy_service::evaluate(
+        pool,
+        policy.merchant_id,
         trusted.amount,
         &trusted.category,
         &trusted.currency,
     )
+    .await?
     .decision;
 
     authorize_checkout(
@@ -362,10 +364,28 @@ pub async fn execute_authorized_checkout(
                 order.id,
 
             "amount":
+                intent.payload.amount,
+
+            "razorpay_amount":
                 order.amount,
 
             "currency":
                 order.currency,
+
+            "razorpay_entity":
+                order.entity,
+
+            "razorpay_status":
+                order.status,
+
+            "amount_paid":
+                order.amount_paid,
+
+            "amount_due":
+                order.amount_due,
+
+            "receipt":
+                order.receipt,
         }),
     )
     .await?;
@@ -374,7 +394,7 @@ pub async fn execute_authorized_checkout(
         status: "ORDER_CREATED".to_string(),
         intent_id: intent.payload.intent_id,
         razorpay_order_id: Some(order.id),
-        amount: Some(order.amount),
+        amount: Some(intent.payload.amount),
         currency: Some(order.currency),
         message: "Razorpay order created successfully; awaiting payment confirmation".to_string(),
     })
@@ -435,6 +455,12 @@ pub async fn execute_checkout(
         ));
     }
 
+    tracing::debug!(
+        intent_id = %record.id,
+        created_at = %record.created_at,
+        "Loaded persisted checkout intent"
+    );
+
     let intent = record_to_signed_intent(record);
 
     verify_signed_intent(signing_secret, &intent).map_err(AppError::Validation)?;
@@ -475,7 +501,7 @@ pub async fn execute_checkout(
 /// cryptographic verification layer.
 fn record_to_signed_intent(record: SignedAgentIntentRecord) -> SignedAgentIntent {
     SignedAgentIntent {
-        payload: crate::agent::signed_intent::SignedAgentIntentPayload {
+        payload: crate::agent::signed_intent::AgentIntentPayload {
             intent_id: record.id,
             session_id: record.session_id,
             action: record.action,

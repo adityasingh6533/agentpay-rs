@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, NavLink } from "react-router-dom";
+import { AgentProvider } from "./context/AgentContext";
 import {
   LayoutDashboard,
   Bot,
@@ -343,87 +344,136 @@ function Transaction({
   );
 }
 
-function Placeholder({ title }: { title: string }) {
-  return (
-    <div className="placeholder">
-      <div className="icon-box purple">
-        <Sparkles />
-      </div>
-      <h1>{title}</h1>
-      <p>Module is being built.</p>
-    </div>
-  );
-}
-
 function App() {
+  const customerId =
+    process.env.REACT_APP_CUSTOMER_ID ||
+    "demo-customer";
+
   return (
-    <BrowserRouter>
-      <div className="app">
-        <aside className="sidebar">
-          <div className="brand">
-            <div className="brand-mark">
-              <Zap size={20} />
-            </div>
-            <span>Agent<span>Pay</span></span>
-          </div>
-
-          <div className="workspace">
-            <span className="workspace-label">WORKSPACE</span>
-            <div className="merchant">
-              <div className="merchant-avatar">A</div>
-              <div>
-                <strong>Acme Store</strong>
-                <span>Merchant</span>
+    <AgentProvider customerId={customerId}>
+      <BrowserRouter>
+        <div className="app">
+          <aside className="sidebar">
+            <div className="brand">
+              <div className="brand-mark">
+                <Zap size={20} />
               </div>
-              <ChevronRight size={15} />
+
+              <span>
+                Agent<span>Pay</span>
+              </span>
             </div>
-          </div>
 
-          <nav>
-            <span className="nav-label">OVERVIEW</span>
+            <div className="workspace">
+              <span className="workspace-label">
+                WORKSPACE
+              </span>
 
-            {navItems.map(({ name, path, icon: Icon }) => (
-              <NavLink
-                key={path}
-                to={path}
-                className={({ isActive }) =>
-                  isActive ? "nav-item active" : "nav-item"
-                }
-              >
-                <Icon size={18} />
-                <span>{name}</span>
-              </NavLink>
-            ))}
-          </nav>
+              <div className="merchant">
+                <div className="merchant-avatar">
+                  A
+                </div>
 
-          <div className="sidebar-bottom">
-            <div className="system-status">
-              <span className="small-dot" />
-              <div>
-                <strong>All systems operational</strong>
-                <span>AgentPay infrastructure</span>
+                <div>
+                  <strong>Acme Store</strong>
+                  <span>Merchant</span>
+                </div>
+
+                <ChevronRight size={15} />
               </div>
             </div>
 
-            <div className="version">AgentPay v0.1.0</div>
-          </div>
-        </aside>
+            <nav>
+              <span className="nav-label">
+                OVERVIEW
+              </span>
 
-        <main className="content">
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/agent" element={<Agent />}/>
-           <Route path="/catalog" element={<Catalog />} />
-          <Route path="/transactions" element={<Transactions />} />
-          <Route path="/audit" element={<AuditTrail />} />
-          <Route path="/shop" element={<Shop />} />
-          <Route path="/payment-success"  element={<PaymentSuccess />}/>
-         
+              {navItems.map(
+                ({
+                  name,
+                  path,
+                  icon: Icon,
+                }) => (
+                  <NavLink
+                    key={path}
+                    to={path}
+                    className={({
+                      isActive,
+                    }) =>
+                      isActive
+                        ? "nav-item active"
+                        : "nav-item"
+                    }
+                  >
+                    <Icon size={18} />
+                    <span>{name}</span>
+                  </NavLink>
+                )
+              )}
+            </nav>
 
-          </Routes>
-        </main>
-      </div>
-    </BrowserRouter>
+            <div className="sidebar-bottom">
+              <div className="system-status">
+                <span className="small-dot" />
+
+                <div>
+                  <strong>
+                    All systems operational
+                  </strong>
+
+                  <span>
+                    AgentPay infrastructure
+                  </span>
+                </div>
+              </div>
+
+              <div className="version">
+                AgentPay v0.1.0
+              </div>
+            </div>
+          </aside>
+
+          <main className="content">
+            <Routes>
+              <Route
+                path="/"
+                element={<Dashboard />}
+              />
+
+              <Route
+                path="/agent"
+                element={<Agent />}
+              />
+
+              <Route
+                path="/catalog"
+                element={<Catalog />}
+              />
+
+              <Route
+                path="/transactions"
+                element={<Transactions />}
+              />
+
+              <Route
+                path="/audit"
+                element={<AuditTrail />}
+              />
+
+              <Route
+                path="/shop"
+                element={<Shop />}
+              />
+
+              <Route
+                path="/payment-success"
+                element={<PaymentSuccess />}
+              />
+            </Routes>
+          </main>
+        </div>
+      </BrowserRouter>
+    </AgentProvider>
   );
 }
 

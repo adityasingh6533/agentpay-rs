@@ -28,81 +28,196 @@ import type {
    API CONFIG
    ========================================================= */
 
-const API_BASE_URL =
-  process.env.REACT_APP_API_URL ||
-  "http://localhost:3000/api";
+const API_BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:8080/api";
+
 
 /* =========================================================
    CLIENT
    ========================================================= */
 
-const client: AxiosInstance =
-  axios.create({
-    baseURL: API_BASE_URL,
-    timeout: 15000,
-    headers: {
-      "Content-Type":
-        "application/json",
-    },
-  });
+const client: AxiosInstance = axios.create({
+  baseURL: API_BASE_URL,
+  timeout: 15000,
+  headers: {
+    "Content-Type": "application/json",
+  },
+});
 
 /* =========================================================
    RESPONSE INTERCEPTOR
    ========================================================= */
 
 client.interceptors.response.use(
-  (response) =>
-    response,
+  (response) => response,
 
   (error: AxiosError<any>) => {
     const message =
-      error.response?.data?.message ||
+      getErrorMessage(
+        error.response?.data
+      ) ||
       error.message ||
       "Request failed.";
 
-    return Promise.reject(
-      new Error(message)
-    );
+    return Promise.reject(new Error(message));
   }
 );
+
+/* =========================================================
+   RESPONSE MAPPERS
+   ========================================================= */
+
+function getErrorMessage(data: unknown): string | null {
+  if (!data) {
+    return null;
+  }
+
+  if (typeof data === "string") {
+    return data;
+  }
+
+  if (typeof data !== "object") {
+    return String(data);
+  }
+
+  const record =
+    data as Record<string, unknown>;
+
+  const directMessage =
+    record.message;
+
+  if (typeof directMessage === "string") {
+    return directMessage;
+  }
+
+  const errorValue = record.error;
+
+  if (typeof errorValue === "string") {
+    return errorValue;
+  }
+
+  if (
+    errorValue &&
+    typeof errorValue === "object"
+  ) {
+    const nested =
+      errorValue as Record<
+        string,
+        unknown
+      >;
+
+    if (
+      typeof nested.message === "string"
+    ) {
+      return nested.message;
+    }
+
+    if (typeof nested.code === "string") {
+      return nested.code;
+    }
+  }
+
+  try {
+    return JSON.stringify(data);
+  } catch {
+    return "Request failed.";
+  }
+}
+
+function mapAgentSession(data: any): AgentSession {
+  return {
+    id: data.id,
+    customerId: data.customer_id,
+    status: data.status,
+    auditTrail: [],
+    createdAt: data.created_at,
+    updatedAt: data.updated_at,
+  };
+}
+
+function mapAuditEvent(data: any): AuditEvent {
+  return {
+    id: data.id,
+    sessionId: data.session_id,
+    eventType: data.event_type,
+    actor: data.actor,
+    status: data.status,
+    message: data.message,
+    metadata: data.metadata,
+    createdAt: data.created_at,
+  };
+}
 
 /* =========================================================
    AGENT API
    ========================================================= */
 
 const agent = {
-  /* -----------------------------------------
-     SESSION
-  ----------------------------------------- */
-
   async createSession(
     customerId: string
   ): Promise<AgentSession> {
-    const response =
-      await client.post<AgentSession>(
-        "/agent/sessions",
-        {
-          customerId,
-        }
-      );
+    if (!customerId.trim()) {
+      throw new Error("Customer ID is required.");
+    }
 
-    return response.data;
+    const response = await client.post<{
+      session: any;
+    }>("/agent/sessions", {
+      customer_name: customerId.trim(),
+    });
+
+    return mapAgentSession(response.data.session);
   },
 
   async getSession(
     sessionId: string
   ): Promise<AgentSession> {
     const response =
-      await client.get<AgentSession>(
+      await client.get<any>(
         `/agent/sessions/${sessionId}`
+      );
+
+    return mapAgentSession(
+      response.data.session ?? response.data
+    );
+  },
+
+  async processMessage(payload: {
+    session_id: string;
+    message: string;
+  }): Promise<{
+    result: {
+      message: string;
+      intent: {
+        category?: string;
+        max_price?: number;
+        keywords: string[];
+        wants_recommendation: boolean;
+        confidence: number;
+      };
+      recommendations: {
+        product_id: string;
+        product_name: string;
+        price: number;
+        score: number;
+        reasons: string[];
+      }[];
+      cross_sell?: {
+        product_id: string;
+        product_name: string;
+        price: number;
+        confidence: number;
+        support_count: number;
+      };
+    };
+  }> {
+    const response =
+      await client.post(
+        "/agent/message",
+        payload
       );
 
     return response.data;
   },
-
-  /* -----------------------------------------
-     INTENT
-  ----------------------------------------- */
 
   async createIntent(
     payload: CreateIntentRequest
@@ -115,10 +230,6 @@ const agent = {
 
     return response.data;
   },
-
-  /* -----------------------------------------
-     RECOMMENDATIONS
-  ----------------------------------------- */
 
   async recommendations(
     payload: RecommendationRequest
@@ -136,10 +247,6 @@ const agent = {
     return response.data;
   },
 
-  /* -----------------------------------------
-     DECISION
-  ----------------------------------------- */
-
   async createDecision(
     payload: DecisionRequest
   ): Promise<AgentDecision> {
@@ -151,10 +258,6 @@ const agent = {
 
     return response.data;
   },
-
-  /* -----------------------------------------
-     AUTHORIZE ACTION
-  ----------------------------------------- */
 
   async authorizeAction(
     payload: AuthorizeActionRequest
@@ -168,10 +271,6 @@ const agent = {
     return response.data;
   },
 
-  /* -----------------------------------------
-     EXECUTE ACTION
-  ----------------------------------------- */
-
   async executeAction(
     actionId: string
   ): Promise<AgentAction> {
@@ -183,19 +282,15 @@ const agent = {
     return response.data;
   },
 
-  /* -----------------------------------------
-     AUDIT
-  ----------------------------------------- */
-
   async getAuditTrail(
     sessionId: string
   ): Promise<AuditEvent[]> {
     const response =
-      await client.get<AuditEvent[]>(
+      await client.get<any[]>(
         `/agent/sessions/${sessionId}/audit`
       );
 
-    return response.data;
+    return response.data.map(mapAuditEvent);
   },
 };
 
@@ -215,9 +310,7 @@ const catalog = {
     const response =
       await client.get<Product[]>(
         "/catalog/products",
-        {
-          params,
-        }
+        { params }
       );
 
     return response.data;
@@ -229,6 +322,17 @@ const catalog = {
     const response =
       await client.get<Product>(
         `/catalog/products/${productId}`
+      );
+
+    return response.data;
+  },
+
+  async getAgentCatalog(
+    merchantId: string
+  ) {
+    const response =
+      await client.get(
+        `/agent/catalog/${merchantId}`
       );
 
     return response.data;
@@ -315,6 +419,68 @@ const policy = {
    ========================================================= */
 
 const checkout = {
+  async authorize(payload: {
+    session_id: string;
+    customer_id: string;
+    merchant_id: string;
+    product_ids: string[];
+
+    /*
+     * Sent only for API compatibility.
+     * Backend MUST calculate trusted pricing
+     * from PostgreSQL.
+     */
+    amount: number;
+
+    currency: string;
+    category: string;
+  }): Promise<{
+    intent_id: string;
+    decision:
+      | "AUTHORIZED"
+      | "REVIEW"
+      | "BLOCKED";
+    reason: string;
+    amount: number;
+    currency: string;
+    requires_confirmation: boolean;
+  }> {
+    const response =
+      await client.post(
+        "/checkout/authorize",
+        payload
+      );
+
+    return response.data;
+  },
+
+  async requestConfirmation(payload: {
+    intent_id: string;
+    session_id: string;
+  }) {
+    const response =
+      await client.post(
+        "/checkout/confirmation",
+        payload
+      );
+
+    return response.data;
+  },
+
+  async execute(payload: {
+    session_id: string;
+    intent_id: string;
+    confirmation_token?: string;
+  }) {
+    const response =
+      await client.post(
+        "/checkout/execute",
+        payload
+      );
+
+    return response.data;
+  },
+
   async create(
     payload: CreateCheckoutRequest
   ): Promise<Checkout> {

@@ -13,13 +13,24 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 
 import "../styles/Catalog.css";
 import ProductCard from "../components/ProductCard";
+import api from "../services/api";
+import type {
+  Product as ApiProduct,
+} from "../types";
 
-type Product = {
-  id: number;
+type Signal = "HIGH" | "MEDIUM" | "LOW";
+
+type CatalogProduct = {
+  id: number | string;
   name: string;
   category: string;
   description: string;
@@ -28,13 +39,13 @@ type Product = {
   reviews: string;
   stock: number;
   conversion: number;
-  crossSell: "HIGH" | "MEDIUM" | "LOW";
-  status: "HIGH" | "MEDIUM" | "LOW";
+  crossSell: Signal;
+  status: Signal;
   tag?: string;
   aiScore: number;
 };
 
-const products: Product[] = [
+const fallbackProducts: CatalogProduct[] = [
   {
     id: 1,
     name: "Velocity Running Shoes",
@@ -110,40 +121,112 @@ const products: Product[] = [
 ];
 
 function Catalog() {
-  const [search, setSearch] = useState("");
-  const [category, setCategory] = useState("All");
-  const [showFilters, setShowFilters] = useState(false);
-  const [aiOnly, setAiOnly] = useState(false);
+  const [search, setSearch] =
+    useState("");
+  const [category, setCategory] =
+    useState("All");
+  const [
+    showFilters,
+    setShowFilters,
+  ] = useState(false);
+  const [aiOnly, setAiOnly] =
+    useState(false);
+  const [products, setProducts] =
+    useState<CatalogProduct[]>(
+      fallbackProducts
+    );
+  const [
+    catalogSource,
+    setCatalogSource,
+  ] = useState<"API" | "DEMO">("DEMO");
 
-  const filteredProducts = useMemo(() => {
-    return products.filter((product) => {
-      const matchesSearch = product.name
-        .toLowerCase()
-        .includes(search.toLowerCase());
+  useEffect(() => {
+    let mounted = true;
 
-      const matchesCategory =
-        category === "All" ||
-        product.category === category;
+    api.catalog
+      .listProducts({ limit: 50 })
+      .then((items) => {
+        if (!mounted || items.length === 0) {
+          return;
+        }
 
-      const matchesAI =
-        !aiOnly || product.crossSell === "HIGH";
+        setProducts(
+          items.map(mapApiProduct)
+        );
+        setCatalogSource("API");
+      })
+      .catch(() => {
+        if (mounted) {
+          setProducts(fallbackProducts);
+          setCatalogSource("DEMO");
+        }
+      });
 
-      return (
-        matchesSearch &&
-        matchesCategory &&
-        matchesAI
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const categories = useMemo(
+    () => [
+      "All",
+      ...Array.from(
+        new Set(
+          products.map(
+            (product) =>
+              product.category
+          )
+        )
+      ),
+    ],
+    [products]
+  );
+
+  const filteredProducts =
+    useMemo(() => {
+      return products.filter(
+        (product) => {
+          const query =
+            search.toLowerCase();
+          const matchesSearch =
+            product.name
+              .toLowerCase()
+              .includes(query) ||
+            product.description
+              .toLowerCase()
+              .includes(query);
+          const matchesCategory =
+            category === "All" ||
+            product.category ===
+              category;
+          const matchesAI =
+            !aiOnly ||
+            product.crossSell ===
+              "HIGH";
+
+          return (
+            matchesSearch &&
+            matchesCategory &&
+            matchesAI
+          );
+        }
       );
-    });
-  }, [search, category, aiOnly]);
+    }, [
+      products,
+      search,
+      category,
+      aiOnly,
+    ]);
 
   const aiProducts = products
-    .filter((product) => product.aiScore >= 75)
+    .filter(
+      (product) =>
+        product.aiScore >= 75
+    )
     .slice(0, 3);
 
   return (
     <div className="catalog-page">
-      {/* HEADER */}
-
       <div className="catalog-header">
         <div>
           <div className="catalog-eyebrow">
@@ -155,7 +238,9 @@ function Catalog() {
               <h1>Product Catalog</h1>
 
               <p>
-                Manage products and optimize them for AI buyers.
+                Backend catalog products optimized
+                for AI buyers and cross-sell
+                discovery.
               </p>
             </div>
 
@@ -167,8 +252,6 @@ function Catalog() {
         </div>
       </div>
 
-      {/* AI INSIGHT */}
-
       <div className="catalog-ai-banner">
         <div className="catalog-ai-icon">
           <Bot size={18} />
@@ -176,17 +259,21 @@ function Catalog() {
 
         <div className="catalog-ai-content">
           <div>
-            <span>AI CATALOG INSIGHT</span>
+            <span>
+              AI CATALOG INSIGHT
+            </span>
 
             <strong>
-              3 products have growth opportunities
+              {aiProducts.length} products are
+              ready for agent selling
             </strong>
           </div>
 
           <p>
-            Your running category has strong demand.
-            Optimizing cross-sells could increase average
-            order value by an estimated 12–18%.
+            Source: {catalogSource}. The running
+            category has strong demand; bundling
+            complementary products can lift average
+            order value by an estimated 12-18%.
           </p>
         </div>
 
@@ -196,36 +283,32 @@ function Catalog() {
         </button>
       </div>
 
-      {/* STATS */}
-
       <div className="catalog-stats">
         <CatalogStat
           label="TOTAL PRODUCTS"
-          value="248"
+          value={`${products.length}`}
           icon={<Package size={16} />}
         />
 
         <CatalogStat
           label="IN STOCK"
-          value="231"
+          value={`${products.filter((p) => p.stock > 0).length}`}
           icon={<Zap size={16} />}
           green
         />
 
         <CatalogStat
           label="AI OPTIMIZED"
-          value="184"
+          value={`${products.filter((p) => p.aiScore >= 75).length}`}
           icon={<Sparkles size={16} />}
         />
 
         <CatalogStat
           label="GROWTH OPPORTUNITIES"
-          value="12"
+          value={`${products.filter((p) => p.crossSell === "HIGH").length}`}
           icon={<TrendingUp size={16} />}
         />
       </div>
-
-      {/* TOOLBAR */}
 
       <div className="catalog-toolbar">
         <div className="catalog-search">
@@ -233,15 +316,19 @@ function Catalog() {
 
           <input
             value={search}
-            onChange={(e) =>
-              setSearch(e.target.value)
+            onChange={(event) =>
+              setSearch(
+                event.target.value
+              )
             }
             placeholder="Search products..."
           />
 
           {search && (
             <button
-              onClick={() => setSearch("")}
+              onClick={() =>
+                setSearch("")
+              }
             >
               <X size={12} />
             </button>
@@ -254,14 +341,17 @@ function Catalog() {
 
             <select
               value={category}
-              onChange={(e) =>
-                setCategory(e.target.value)
+              onChange={(event) =>
+                setCategory(
+                  event.target.value
+                )
               }
             >
-              <option>All</option>
-              <option>Running</option>
-              <option>Accessories</option>
-              <option>Sportswear</option>
+              {categories.map((item) => (
+                <option key={item}>
+                  {item}
+                </option>
+              ))}
             </select>
 
             <ChevronDown size={12} />
@@ -274,7 +364,9 @@ function Catalog() {
                 : "filter-button"
             }
             onClick={() =>
-              setAiOnly((value) => !value)
+              setAiOnly(
+                (value) => !value
+              )
             }
           >
             <Sparkles size={13} />
@@ -288,7 +380,9 @@ function Catalog() {
                 : "filter-button"
             }
             onClick={() =>
-              setShowFilters((value) => !value)
+              setShowFilters(
+                (value) => !value
+              )
             }
           >
             <Filter size={13} />
@@ -296,8 +390,6 @@ function Catalog() {
           </button>
         </div>
       </div>
-
-      {/* FILTER PANEL */}
 
       {showFilters && (
         <div className="catalog-filter-panel">
@@ -328,8 +420,6 @@ function Catalog() {
         </div>
       )}
 
-      {/* TABLE */}
-
       <div className="catalog-table-card">
         <div className="catalog-table-header">
           <div>
@@ -356,14 +446,17 @@ function Catalog() {
             <span>ACTION</span>
           </div>
 
-          {filteredProducts.map((product) => (
-            <ProductRow
-              key={product.id}
-              product={product}
-            />
-          ))}
+          {filteredProducts.map(
+            (product) => (
+              <ProductRow
+                key={product.id}
+                product={product}
+              />
+            )
+          )}
 
-          {filteredProducts.length === 0 && (
+          {filteredProducts.length ===
+            0 && (
             <div className="catalog-empty">
               <Search size={22} />
 
@@ -372,27 +465,30 @@ function Catalog() {
               </strong>
 
               <span>
-                Try a different product name or category.
+                Try a different product
+                name or category.
               </span>
             </div>
           )}
         </div>
       </div>
 
-      {/* AI RECOMMENDATION PREVIEW */}
-
       <div className="catalog-preview-section">
         <div className="catalog-preview-header">
           <div>
-            <span>AI PRODUCT INTELLIGENCE</span>
+            <span>
+              AI PRODUCT INTELLIGENCE
+            </span>
 
             <h2>
-              Products your agent can recommend
+              Products your agent can
+              recommend
             </h2>
 
             <p>
-              These products have the strongest AI
-              recommendation signals.
+              These products have the
+              strongest recommendation and
+              bundling signals.
             </p>
           </div>
 
@@ -410,18 +506,10 @@ function Catalog() {
               variant="catalog"
               showAI
               showStock
-              onAdd={(selectedProduct) => {
-                console.log(
-                  "Product selected:",
-                  selectedProduct.name
-                );
-              }}
             />
           ))}
         </div>
       </div>
-
-      {/* AI OPPORTUNITY */}
 
       <div className="catalog-opportunity">
         <div className="opportunity-icon">
@@ -429,16 +517,21 @@ function Catalog() {
         </div>
 
         <div>
-          <span>AI GROWTH OPPORTUNITY</span>
+          <span>
+            AI GROWTH OPPORTUNITY
+          </span>
 
           <strong>
-            Velocity Running Shoes → ProFit Running Socks
+            Velocity Running Shoes -&gt;
+            ProFit Running Socks
           </strong>
 
           <p>
-            68% of customers buying this shoe also purchase
-            the socks. Your agent can automatically surface
-            this recommendation during checkout.
+            Customers buying running shoes
+            commonly need socks. Your agent
+            can surface this cross-sell at
+            checkout while keeping the money
+            action gated.
           </p>
         </div>
 
@@ -459,7 +552,7 @@ function CatalogStat({
 }: {
   label: string;
   value: string;
-  icon: React.ReactNode;
+  icon: ReactNode;
   green?: boolean;
 }) {
   return (
@@ -486,12 +579,10 @@ function CatalogStat({
 function ProductRow({
   product,
 }: {
-  product: Product;
+  product: CatalogProduct;
 }) {
   return (
     <div className="catalog-table-row">
-      {/* PRODUCT */}
-
       <div className="catalog-product">
         <div className="catalog-product-image">
           <Package size={18} />
@@ -502,7 +593,6 @@ function ProductRow({
 
           <span>
             {product.category}
-
             {product.tag && (
               <em>{product.tag}</em>
             )}
@@ -510,13 +600,9 @@ function ProductRow({
         </div>
       </div>
 
-      {/* PRICE */}
-
       <div className="catalog-price">
-        ₹{product.price.toLocaleString("en-IN")}
+        {formatPrice(product.price)}
       </div>
-
-      {/* STOCK */}
 
       <div className="catalog-stock">
         <span
@@ -538,8 +624,6 @@ function ProductRow({
         </div>
       </div>
 
-      {/* CONVERSION */}
-
       <div className="catalog-conversion">
         <strong>
           {product.conversion}%
@@ -557,8 +641,6 @@ function ProductRow({
         </div>
       </div>
 
-      {/* AI SIGNAL */}
-
       <div className="catalog-signal">
         <div
           className={`signal-badge ${product.status.toLowerCase()}`}
@@ -567,7 +649,8 @@ function ProductRow({
             <TrendingUp size={10} />
           )}
 
-          {product.status === "MEDIUM" && (
+          {product.status ===
+            "MEDIUM" && (
             <Sparkles size={10} />
           )}
 
@@ -578,8 +661,6 @@ function ProductRow({
           {product.crossSell}
         </div>
       </div>
-
-      {/* ACTION */}
 
       <div className="catalog-action">
         <button title="Edit product">
@@ -592,6 +673,74 @@ function ProductRow({
       </div>
     </div>
   );
+}
+
+function mapApiProduct(
+  product: ApiProduct & {
+    review_count?: number;
+  }
+): CatalogProduct {
+  const price = Number(product.price);
+  const stock =
+    Number(product.stock || 0);
+  const rating =
+    Number(product.rating || 0);
+  const reviews =
+    product.reviewCount ??
+    product.review_count ??
+    0;
+  const isStrong =
+    rating >= 4.7 && stock > 0;
+  const isLowStock = stock < 10;
+
+  return {
+    id: product.id,
+    name: product.name,
+    category:
+      product.category || "General",
+    description:
+      product.description ||
+      "Backend catalog product",
+    price:
+      Number.isFinite(price)
+        ? price
+        : 0,
+    rating,
+    reviews:
+      Number(reviews).toLocaleString(
+        "en-IN"
+      ),
+    stock,
+    conversion: isStrong
+      ? 8.7
+      : isLowStock
+      ? 3.2
+      : 6.1,
+    crossSell: isStrong
+      ? "HIGH"
+      : isLowStock
+      ? "LOW"
+      : "MEDIUM",
+    status: isStrong
+      ? "HIGH"
+      : isLowStock
+      ? "LOW"
+      : "MEDIUM",
+    tag: isStrong
+      ? "AI PICK"
+      : undefined,
+    aiScore: isStrong
+      ? 92
+      : isLowStock
+      ? 55
+      : 76,
+  };
+}
+
+function formatPrice(amount: number) {
+  return `₹${amount.toLocaleString(
+    "en-IN"
+  )}`;
 }
 
 export default Catalog;

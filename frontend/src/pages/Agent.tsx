@@ -7,67 +7,44 @@ import {
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
-import * as React from "react";
 
 import "../styles/Agent.css";
 
 import AgentActivity from "../components/AgentActivity";
 import AuditTrail from "../components/AuditTrail";
 import ChatPanel from "../components/ChatPanel";
-import CheckoutModal from "../components/CheckoutModal";
 
 import {
-  AgentProvider,
   useAgentContext,
 } from "../context/AgentContext";
 
 function Agent() {
-  const customerId =
-    process.env.REACT_APP_CUSTOMER_ID ||
-    "demo-customer";
-
-  return (
-    <AgentProvider
-      customerId={customerId}
-    >
-      <AgentContent />
-    </AgentProvider>
-  );
+  return <AgentContent />;
 }
 
 function AgentContent() {
   const {
     status,
-    session,
     decision,
     cart,
-    lastAction,
+    authorization,
+    checkoutResult,
     isLoading,
     error,
     canExecute,
-    loadAuditTrail,
+    executeCheckout,
   } = useAgentContext();
 
-  const handleOpenCheckout = () => {
-    if (!lastAction) {
+  const handleExecuteCheckout = async () => {
+    if (!canExecute || isLoading || !cart) {
       return;
     }
 
-    if (!canExecute) {
-      return;
-    }
-
-    window.dispatchEvent(
-      new CustomEvent("agent:open-checkout")
-    );
+    await executeCheckout();
   };
 
   return (
     <div className="agent-page">
-
-      {/* =================================================
-          HEADER
-      ================================================= */}
 
       <div className="agent-page-header">
         <div>
@@ -86,8 +63,8 @@ function AgentContent() {
               </h1>
 
               <p>
-                Your autonomous growth engine for
-                intelligent commerce.
+                Backend-driven recommendations, guarded
+                checkout and complete auditability.
               </p>
             </div>
           </div>
@@ -102,35 +79,18 @@ function AgentContent() {
           }
         >
           <span />
-
           {formatAgentStatus(status)}
         </div>
       </div>
 
-      {/* =================================================
-          MAIN
-      ================================================= */}
-
       <div className="agent-layout">
-
-        {/* LEFT */}
-
         <section className="conversation-panel">
           <ChatPanel />
         </section>
 
-        {/* RIGHT */}
-
         <aside className="agent-sidebar">
-
-          {/* =================================================
-              DECISION
-          ================================================= */}
-
           <div className="agent-card decision-card">
-
             <div className="card-heading">
-
               <div className="card-icon purple">
                 <Sparkles size={17} />
               </div>
@@ -148,11 +108,9 @@ function AgentContent() {
                     : "Waiting for request"}
                 </strong>
               </div>
-
             </div>
 
             <div className="decision-box">
-
               <div>
                 <span>
                   Predicted AOV
@@ -163,7 +121,7 @@ function AgentContent() {
                     ? formatCurrency(
                         decision.cart.total
                       )
-                    : "—"}
+                    : "-"}
                 </strong>
               </div>
 
@@ -175,14 +133,12 @@ function AgentContent() {
                 <strong>
                   {decision
                     ? `${decision.confidence}%`
-                    : "—"}
+                    : "-"}
                 </strong>
               </div>
-
             </div>
 
             <div className="decision-reason">
-
               <strong>
                 Why this action?
               </strong>
@@ -191,25 +147,13 @@ function AgentContent() {
                 {decision?.reasoning ??
                   "The agent will explain its decision after processing the customer's request."}
               </p>
-
             </div>
-
           </div>
-
-          {/* =================================================
-              ACTIVITY
-          ================================================= */}
 
           <AgentActivity />
 
-          {/* =================================================
-              GUARDRAILS
-          ================================================= */}
-
           <div className="agent-card guardrail-card">
-
             <div className="card-title-row">
-
               <div>
                 <span>
                   SAFETY & CONTROL
@@ -221,7 +165,6 @@ function AgentContent() {
               </div>
 
               <ShieldCheck size={17} />
-
             </div>
 
             {decision?.guardrails?.length ? (
@@ -230,90 +173,75 @@ function AgentContent() {
                   <Guardrail
                     key={guardrail.id}
                     text={guardrail.name}
-                    status={
-                      guardrail.status
-                    }
+                    status={guardrail.status}
                   />
                 )
               )
             ) : (
               <div className="guardrail-empty">
-
                 <ShieldCheck size={13} />
 
                 <span>
                   Waiting for agent decision
                 </span>
-
               </div>
             )}
-
           </div>
 
-          {/* =================================================
-              CHECKOUT
-          ================================================= */}
-
           <div className="checkout-card">
-
             <div className="checkout-top">
-
               <div>
                 <span>
                   CHECKOUT STATUS
                 </span>
 
                 <strong>
-                  {cart
-                    ? formatCurrency(
-                        cart.total
-                      )
-                    : "—"}
+                  {checkoutResult
+                    ? checkoutResult.status
+                    : cart
+                    ? formatCurrency(cart.total)
+                    : "-"}
                 </strong>
               </div>
 
               <CircleDollarSign size={23} />
-
             </div>
 
             {cart?.items?.length ? (
-
               <div className="checkout-items">
+                {cart.items.map((item) => (
+                  <div
+                    key={item.productId}
+                    className="checkout-item-row"
+                  >
+                    <span>
+                      {item.productName}
+                      {" x "}
+                      {item.quantity}
+                    </span>
 
-                {cart.items.map(
-                  (item) => (
-                    <div
-                      key={
-                        item.productId
-                      }
-                      className="checkout-item-row"
-                    >
-
-                      <span>
-                        {item.productName}
-                        {" × "}
-                        {item.quantity}
-                      </span>
-
-                      <span>
-                        {formatCurrency(
-                          item.totalPrice
-                        )}
-                      </span>
-
-                    </div>
-                  )
-                )}
-
+                    <span>
+                      {formatCurrency(
+                        item.totalPrice
+                      )}
+                    </span>
+                  </div>
+                ))}
               </div>
-
             ) : (
-
               <div className="checkout-empty">
-                Cart will appear here after
-                the agent selects products.
+                Cart will appear here after the
+                agent selects products.
               </div>
+            )}
 
+            {authorization && (
+              <div className="checkout-empty">
+                Authorization:{" "}
+                {authorization.decision}
+                {" - "}
+                {authorization.reason}
+              </div>
             )}
 
             <button
@@ -323,124 +251,43 @@ function AgentContent() {
                 isLoading ||
                 !cart
               }
-              onClick={
-                handleOpenCheckout
-              }
+              onClick={handleExecuteCheckout}
             >
-
               <CreditCard size={16} />
 
               {canExecute
-                ? "Open secure checkout"
+                ? "Create Razorpay order"
                 : status ===
                   "AWAITING_CONFIRMATION"
                 ? "Customer confirmation required"
+                : status === "BLOCKED"
+                ? "Blocked by policy"
                 : "Authorization required"}
 
               <ChevronRight size={16} />
-
             </button>
+
+            {checkoutResult && (
+              <div className="checkout-empty">
+                {checkoutResult.message}
+              </div>
+            )}
 
             {error && (
               <div className="checkout-error">
                 {error.message}
               </div>
             )}
-
           </div>
-
         </aside>
-
       </div>
-
-      {/* =================================================
-          AUDIT
-      ================================================= */}
 
       <div className="agent-audit-section">
         <AuditTrail />
       </div>
-
-      {/* =================================================
-          CHECKOUT MODAL
-      ================================================= */}
-
-      <CheckoutController
-        sessionId={session?.id}
-        customerId={
-          process.env.REACT_APP_CUSTOMER_ID ||
-          "demo-customer"
-        }
-        cart={cart}
-        action={lastAction}
-        onSuccess={async () => {
-          await loadAuditTrail();
-        }}
-      />
-
     </div>
   );
 }
-
-/* =========================================================
-   CHECKOUT CONTROLLER
-   ========================================================= */
-
-function CheckoutController({
-  sessionId,
-  customerId,
-  cart,
-  action,
-  onSuccess,
-}: {
-  sessionId?: string;
-  customerId: string;
-  cart: any;
-  action: any;
-  onSuccess: () => Promise<void>;
-}) {
-  const [open, setOpen] =
-    React.useState(false);
-
-  React.useEffect(() => {
-    const handler = () =>
-      setOpen(true);
-
-    window.addEventListener(
-      "agent:open-checkout",
-      handler
-    );
-
-    return () =>
-      window.removeEventListener(
-        "agent:open-checkout",
-        handler
-      );
-  }, []);
-
-  return (
-    <CheckoutModal
-      open={open}
-      sessionId={sessionId}
-      customerId={customerId}
-      cart={cart}
-      action={action}
-      onClose={() =>
-        setOpen(false)
-      }
-      onSuccess={async (
-        checkout
-      ) => {
-        await onSuccess();
-      }
-      }
-    />
-  );
-}
-
-/* =========================================================
-   GUARDRAIL
-   ========================================================= */
 
 function Guardrail({
   text,
@@ -452,9 +299,7 @@ function Guardrail({
     | "BLOCKED"
     | "REVIEW_REQUIRED";
 }) {
-  const isPass =
-    status === "PASS";
-
+  const isPass = status === "PASS";
   const isBlocked =
     status === "BLOCKED";
 
@@ -462,7 +307,6 @@ function Guardrail({
     <div
       className={`guardrail ${status.toLowerCase()}`}
     >
-
       <div>
         {isPass ? (
           <Check size={11} />
@@ -482,26 +326,17 @@ function Guardrail({
           ? "BLOCKED"
           : "REVIEW"}
       </span>
-
     </div>
   );
 }
 
-/* =========================================================
-   HELPERS
-   ========================================================= */
-
-function formatCurrency(
-  amount: number
-) {
+function formatCurrency(amount: number) {
   return `₹${amount.toLocaleString(
     "en-IN"
   )}`;
 }
 
-function formatAgentStatus(
-  status: string
-) {
+function formatAgentStatus(status: string) {
   return status
     .replaceAll("_", " ")
     .toLowerCase()
@@ -512,9 +347,7 @@ function formatAgentStatus(
     );
 }
 
-function formatDecisionType(
-  type: string
-) {
+function formatDecisionType(type: string) {
   return type
     .replaceAll("_", " ")
     .replace(

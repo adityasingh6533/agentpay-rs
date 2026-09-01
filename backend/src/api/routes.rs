@@ -4,7 +4,7 @@ use axum::{
     routing::{get, post},
 };
 
-use super::checkout;
+use super::{catalog, checkout};
 
 use crate::api::agent_catalog;
 use crate::{AppState, errors::AppError, webhooks};
@@ -29,6 +29,10 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/health", get(health))
         .route("/agent/sessions", post(super::agent::create_session))
+        .route(
+            "/agent/sessions/{session_id}/audit",
+            get(super::agent::get_audit_trail),
+        )
         .route("/agent/message", post(super::agent::process_message))
         .route("/checkout/authorize", post(checkout::authorize_checkout))
         .route("/checkout/execute", post(checkout::execute_checkout))
@@ -37,8 +41,12 @@ pub fn router() -> Router<AppState> {
             post(webhooks::razorpay::razorpay_webhook),
         )
         .route(
-            "/api/checkout/confirmation",
+            "/checkout/confirmation",
             post(checkout::request_confirmation),
         )
-        .route("/api/agent/catalog", get(agent_catalog::get_agent_catalog))
+        .route("/agent/catalog", get(agent_catalog::get_agent_catalog))
+        .route(
+            "/agent/catalog/{merchant_id}",
+            get(catalog::agent_catalog),
+        )
 }

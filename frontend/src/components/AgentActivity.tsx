@@ -39,7 +39,8 @@ function AgentActivity() {
     status,
     intent,
     decision,
-    lastAction,
+    authorization,
+    checkoutResult,
   } = useAgentContext();
 
   const activities: Activity[] = [
@@ -132,6 +133,9 @@ function AgentActivity() {
       description:
         status === "AUTHORIZED"
           ? "Customer action has been authorized."
+          : authorization?.decision ===
+            "REVIEW"
+          ? "Explicit customer confirmation is required."
           : status ===
             "AWAITING_CONFIRMATION"
           ? "Waiting for explicit customer confirmation."
@@ -142,6 +146,9 @@ function AgentActivity() {
       status:
         status === "AUTHORIZED"
           ? "DONE"
+          : authorization?.decision ===
+            "REVIEW"
+          ? "REVIEW"
           : status ===
             "AWAITING_CONFIRMATION"
           ? "ACTIVE"
@@ -157,9 +164,10 @@ function AgentActivity() {
         "Secure checkout",
 
       description:
-        lastAction?.status ===
-        "EXECUTED"
-          ? "Authorized checkout action executed."
+        checkoutResult
+          ? "Razorpay order request completed by the backend."
+          : status === "FAILED"
+          ? "Checkout failed safely and the audit trail records why."
           : "Checkout remains locked until authorization is complete.",
 
       icon: CreditCard,
@@ -398,6 +406,7 @@ function getStageStatus(
     "UNDERSTANDING",
     "SEARCHING",
     "DECIDING",
+    "READY_FOR_AUTHORIZATION",
     "GUARDRAIL_CHECK",
     "AWAITING_CONFIRMATION",
     "AUTHORIZED",
@@ -482,6 +491,13 @@ function getGuardrailStatus(
     status === "COMPLETED"
   ) {
     return "DONE";
+  }
+
+  if (
+    status ===
+    "READY_FOR_AUTHORIZATION"
+  ) {
+    return "ACTIVE";
   }
 
   if (

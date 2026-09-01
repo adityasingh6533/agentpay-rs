@@ -21,6 +21,7 @@ pub struct AgentRecommendation {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CrossSellRecommendation {
+    pub source_product_id: Uuid,
     pub product_id: Uuid,
     pub product_name: String,
     pub price: i64,

@@ -1,7 +1,6 @@
 import {
   ArrowRight,
   Bot,
-  Check,
   ChevronRight,
   Heart,
   MessageCircle,

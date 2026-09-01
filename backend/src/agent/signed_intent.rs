@@ -4,12 +4,10 @@ use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use uuid::Uuid;
 
-use crate::errors::AppError;
-
 type HmacSha256 = Hmac<Sha256>;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct SignedAgentIntentPayload {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentIntentPayload {
     pub intent_id: Uuid,
     pub session_id: Uuid,
     pub action: String,
@@ -23,202 +21,265 @@ pub struct SignedAgentIntentPayload {
     pub expires_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SignedAgentIntent {
-    pub payload: SignedAgentIntentPayload,
+    pub payload: AgentIntentPayload,
     pub signature: String,
+}
+
+impl AgentIntentPayload {
+    pub fn canonical_bytes(&self) -> Result<Vec<u8>, serde_json::Error> {
+        serde_json::to_vec(self)
+    }
 }
 
 pub fn create_signed_intent(
     secret: &str,
     session_id: Uuid,
-    action: &str,
+    action: impl Into<String>,
     amount: i64,
-    currency: &str,
-    category: &str,
+    currency: impl Into<String>,
+    category: impl Into<String>,
     product_ids: Vec<Uuid>,
     requires_confirmation: bool,
 ) -> Result<SignedAgentIntent, String> {
-    SignedAgentIntent::issue(
-        IssueSignedAgentIntent {
-            session_id,
-            action: action.to_string(),
-            amount,
-            currency: currency.to_string(),
-            category: category.to_string(),
-            product_ids,
-            requires_confirmation,
-            ttl: None,
-        },
-        secret,
-    )
-    .map_err(|error| error.to_string())
-}
-
-pub fn verify_signed_intent(secret: &str, intent: &SignedAgentIntent) -> Result<(), String> {
-    intent.verify(secret).map_err(|error| error.to_string())
-}
-
-impl SignedAgentIntent {
-    pub fn issue(input: IssueSignedAgentIntent, signing_secret: &str) -> Result<Self, AppError> {
-        validate_secret(signing_secret)?;
-
-        if input.action.trim().is_empty() {
-            return Err(AppError::Validation("intent action cannot be empty".into()));
-        }
-
-        if input.amount <= 0 {
-            return Err(AppError::Validation(
-                "intent amount must be positive".into(),
-            ));
-        }
-
-        if input.currency.trim().is_empty() {
-            return Err(AppError::Validation(
-                "intent currency cannot be empty".into(),
-            ));
-        }
-
-        if input.category.trim().is_empty() {
-            return Err(AppError::Validation(
-                "intent category cannot be empty".into(),
-            ));
-        }
-
-        let issued_at = Utc::now();
-        let payload = SignedAgentIntentPayload {
-            intent_id: Uuid::new_v4(),
-            session_id: input.session_id,
-            action: input.action.trim().to_string(),
-            amount: input.amount,
-            currency: input.currency.trim().to_uppercase(),
-            category: input.category.trim().to_string(),
-            product_ids: input.product_ids,
-            requires_confirmation: input.requires_confirmation,
-            nonce: Uuid::new_v4(),
-            issued_at,
-            expires_at: issued_at + input.ttl.unwrap_or_else(|| Duration::minutes(15)),
-        };
-
-        if payload.expires_at <= payload.issued_at {
-            return Err(AppError::Validation(
-                "intent expiry must be in the future".into(),
-            ));
-        }
-
-        let signature = sign_payload(&payload, signing_secret)?;
-
-        Ok(Self { payload, signature })
+    if secret.trim().is_empty() {
+        return Err(
+            "Agent signing secret cannot be empty".to_string()
+        );
     }
 
-    pub fn verify(&self, signing_secret: &str) -> Result<(), AppError> {
-        validate_secret(signing_secret)?;
-
-        if self.payload.expires_at <= Utc::now() {
-            return Err(AppError::Unauthorized);
-        }
-
-        let expected = sign_payload(&self.payload, signing_secret)?;
-
-        if constant_time_eq(self.signature.as_bytes(), expected.as_bytes()) {
-            Ok(())
-        } else {
-            Err(AppError::Unauthorized)
-        }
+    if amount <= 0 {
+        return Err(
+            "Agent intent amount must be positive".to_string()
+        );
     }
+
+    let now = Utc::now();
+
+    let payload = AgentIntentPayload {
+        intent_id: Uuid::new_v4(),
+        session_id,
+        action: action.into(),
+        amount,
+        currency: currency.into(),
+        category: category.into(),
+        product_ids,
+        requires_confirmation,
+        nonce: Uuid::new_v4(),
+        issued_at: now,
+        expires_at: now + Duration::minutes(5),
+    };
+
+    let signature =
+        sign_payload(secret, &payload)?;
+
+    Ok(SignedAgentIntent {
+        payload,
+        signature,
+    })
 }
 
-#[derive(Debug, Clone)]
-pub struct IssueSignedAgentIntent {
-    pub session_id: Uuid,
-    pub action: String,
-    pub amount: i64,
-    pub currency: String,
-    pub category: String,
-    pub product_ids: Vec<Uuid>,
-    pub requires_confirmation: bool,
-    pub ttl: Option<Duration>,
-}
+pub fn verify_signed_intent(
+    secret: &str,
+    intent: &SignedAgentIntent,
+) -> Result<(), String> {
+    if secret.trim().is_empty() {
+        return Err(
+            "Agent signing secret cannot be empty".to_string()
+        );
+    }
 
-fn sign_payload(
-    payload: &SignedAgentIntentPayload,
-    signing_secret: &str,
-) -> Result<String, AppError> {
-    let mut mac = HmacSha256::new_from_slice(signing_secret.as_bytes())
-        .map_err(|_| AppError::Config("invalid agent signing secret".into()))?;
-    let canonical = serde_json::to_vec(payload).map_err(|_| AppError::Internal)?;
+    let now = Utc::now();
 
-    mac.update(&canonical);
+    if now >= intent.payload.expires_at {
+        return Err(
+            "Agent intent has expired".to_string()
+        );
+    }
 
-    Ok(hex::encode(mac.finalize().into_bytes()))
-}
+    if intent.payload.issued_at > now + Duration::seconds(30) {
+        return Err(
+            "Agent intent issued_at is invalid".to_string()
+        );
+    }
 
-fn validate_secret(signing_secret: &str) -> Result<(), AppError> {
-    if signing_secret.trim().is_empty() {
-        return Err(AppError::Config(
-            "AGENT_SIGNING_SECRET must be set before signing intents".into(),
-        ));
+    let expected =
+        sign_payload(secret, &intent.payload)?;
+
+    if !constant_time_equal(
+        expected.as_bytes(),
+        intent.signature.as_bytes(),
+    ) {
+        return Err(
+            "Invalid agent intent signature".to_string()
+        );
     }
 
     Ok(())
 }
 
-fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
+fn sign_payload(
+    secret: &str,
+    payload: &AgentIntentPayload,
+) -> Result<String, String> {
+    let bytes = payload
+        .canonical_bytes()
+        .map_err(|error| error.to_string())?;
+
+    let mut mac =
+        HmacSha256::new_from_slice(
+            secret.as_bytes()
+        )
+        .map_err(|error| error.to_string())?;
+
+    mac.update(&bytes);
+
+    let result = mac.finalize();
+
+    Ok(hex::encode(result.into_bytes()))
+}
+
+fn constant_time_equal(
+    left: &[u8],
+    right: &[u8],
+) -> bool {
     if left.len() != right.len() {
         return false;
     }
 
-    left.iter()
-        .zip(right.iter())
-        .fold(0, |diff, (left, right)| diff | (left ^ right))
-        == 0
+    let mut difference = 0u8;
+
+    for (a, b) in left.iter().zip(right.iter()) {
+        difference |= a ^ b;
+    }
+
+    difference == 0
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn input() -> IssueSignedAgentIntent {
-        IssueSignedAgentIntent {
-            session_id: Uuid::new_v4(),
-            action: "checkout".to_string(),
-            amount: 1299,
-            currency: "usd".to_string(),
-            category: "Running".to_string(),
-            product_ids: vec![Uuid::new_v4()],
-            requires_confirmation: true,
-            ttl: Some(Duration::minutes(5)),
-        }
+    const SECRET: &str =
+        "test-secret-for-agentpay";
+
+    #[test]
+    fn creates_valid_signed_intent() {
+        let session_id = Uuid::new_v4();
+
+        let intent =
+            create_signed_intent(
+                SECRET,
+                session_id,
+                "CREATE_ORDER",
+                1299,
+                "INR",
+                "Running",
+                vec![Uuid::new_v4()],
+                false,
+            )
+            .unwrap();
+
+        assert!(
+            verify_signed_intent(
+                SECRET,
+                &intent
+            )
+            .is_ok()
+        );
     }
 
     #[test]
-    fn signed_intent_verifies_with_original_payload() {
-        let intent = SignedAgentIntent::issue(input(), "test-secret").unwrap();
+    fn rejects_modified_amount() {
+        let session_id = Uuid::new_v4();
 
-        assert_eq!(intent.signature.len(), 64);
-        assert_eq!(intent.payload.currency, "USD");
-        assert!(intent.verify("test-secret").is_ok());
+        let mut intent =
+            create_signed_intent(
+                SECRET,
+                session_id,
+                "CREATE_ORDER",
+                1299,
+                "INR",
+                "Running",
+                vec![Uuid::new_v4()],
+                false,
+            )
+            .unwrap();
+
+        intent.payload.amount = 9999;
+
+        assert!(
+            verify_signed_intent(
+                SECRET,
+                &intent
+            )
+            .is_err()
+        );
     }
 
     #[test]
-    fn signed_intent_rejects_tampered_payload() {
-        let mut intent = SignedAgentIntent::issue(input(), "test-secret").unwrap();
-        intent.payload.amount += 1;
+    fn rejects_wrong_secret() {
+        let intent =
+            create_signed_intent(
+                SECRET,
+                Uuid::new_v4(),
+                "CREATE_ORDER",
+                1299,
+                "INR",
+                "Running",
+                vec![],
+                false,
+            )
+            .unwrap();
 
-        assert!(matches!(
-            intent.verify("test-secret"),
-            Err(AppError::Unauthorized)
-        ));
+        assert!(
+            verify_signed_intent(
+                "wrong-secret",
+                &intent
+            )
+            .is_err()
+        );
     }
 
     #[test]
-    fn signed_intent_rejects_expired_payload() {
-        let mut input = input();
-        input.ttl = Some(Duration::seconds(-1));
+    fn rejects_expired_intent() {
+        let now = Utc::now();
 
-        assert!(matches!(
-            SignedAgentIntent::issue(input, "test-secret"),
-            Err(AppError::Validation(_))
-        ));
+        let payload =
+            AgentIntentPayload {
+                intent_id: Uuid::new_v4(),
+                session_id: Uuid::new_v4(),
+                action: "CREATE_ORDER".to_string(),
+                amount: 1299,
+                currency: "INR".to_string(),
+                category: "Running".to_string(),
+                product_ids: vec![],
+                requires_confirmation: false,
+                nonce: Uuid::new_v4(),
+                issued_at: now - Duration::minutes(10),
+                expires_at: now - Duration::minutes(5),
+            };
+
+        let signature =
+            sign_payload(
+                SECRET,
+                &payload,
+            )
+            .unwrap();
+
+        let intent =
+            SignedAgentIntent {
+                payload,
+                signature,
+            };
+
+        assert!(
+            verify_signed_intent(
+                SECRET,
+                &intent
+            )
+            .is_err()
+        );
     }
 }

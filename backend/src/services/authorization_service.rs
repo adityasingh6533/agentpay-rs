@@ -42,5 +42,22 @@ pub async fn authorize(
 
     queries::update_signed_intent_status(pool, intent.payload.intent_id, decision).await?;
 
+    queries::create_audit_event(
+        pool,
+        intent.payload.session_id,
+        "CHECKOUT_AUTHORIZATION_DECISION",
+        "SYSTEM",
+        decision,
+        &result.reason,
+        serde_json::json!({
+            "intent_id": intent.payload.intent_id,
+            "amount": intent.payload.amount,
+            "currency": intent.payload.currency,
+            "category": intent.payload.category,
+            "requires_confirmation": intent.payload.requires_confirmation,
+        }),
+    )
+    .await?;
+
     Ok(result)
 }

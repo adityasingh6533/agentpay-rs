@@ -93,7 +93,7 @@ pub async fn razorpay_webhook(
         .map(str::to_owned);
 
     // -----------------------------------------------------
-    // 6. Persist event exactly once
+    // 6. Persist webhook exactly once
     // -----------------------------------------------------
 
     let inserted = queries::insert_webhook_event(
@@ -107,34 +107,57 @@ pub async fn razorpay_webhook(
         },
     )
     .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    .map_err(|error| {
+        tracing::error!(
+            event_id = %event_id,
+            error = ?error,
+            "Failed to persist Razorpay webhook"
+        );
 
-    // Duplicate webhook.
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    // Duplicate webhook:
     //
-    // Already persisted, so acknowledge it safely.
+    // Event was already persisted and therefore already
+    // accepted for processing. Acknowledge safely.
     if !inserted {
+        tracing::info!(
+            event_id = %event_id,
+            "Duplicate Razorpay webhook acknowledged"
+        );
+
         return Ok(StatusCode::OK);
     }
 
     // -----------------------------------------------------
-    // 7. Reconcile supported payment events
+    // 7. Ignore unsupported events safely
     // -----------------------------------------------------
 
     let checkout_status = match event_type {
         "payment.captured" => "PAID",
-
         "payment.failed" => "FAILED",
 
-        // Other Razorpay events are safely stored
-        // but do not mutate checkout state.
         _ => {
             queries::mark_webhook_processed(&state.db, event_id)
                 .await
-                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+                .map_err(|error| {
+                    tracing::error!(
+                        event_id = %event_id,
+                        error = ?error,
+                        "Failed to mark unsupported webhook processed"
+                    );
+
+                    StatusCode::INTERNAL_SERVER_ERROR
+                })?;
 
             return Ok(StatusCode::OK);
         }
     };
+
+    // -----------------------------------------------------
+    // 8. Razorpay payment events must contain order_id
+    // -----------------------------------------------------
 
     let Some(order_id) = razorpay_order_id.as_deref() else {
         let _ = queries::mark_webhook_failed(&state.db, event_id).await;
@@ -143,64 +166,95 @@ pub async fn razorpay_webhook(
     };
 
     // -----------------------------------------------------
-    // 8. Update checkout
+    // 9. Find checkout + agent intent relationship
     // -----------------------------------------------------
-
-    let session_id = queries::update_checkout_from_razorpay(&state.db, order_id, checkout_status)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    let Some(_) = session_id else {
-        let _ = queries::mark_webhook_failed(&state.db, event_id).await;
-
-        return Err(StatusCode::NOT_FOUND);
-    };
 
     let Some((session_id, intent_id)) = queries::get_checkout_reconciliation(&state.db, order_id)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .map_err(|error| {
+            tracing::error!(
+                event_id = %event_id,
+                order_id = %order_id,
+                error = ?error,
+                "Failed to resolve checkout reconciliation"
+            );
+
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
     else {
         let _ = queries::mark_webhook_failed(&state.db, event_id).await;
+
+        tracing::warn!(
+            event_id = %event_id,
+            order_id = %order_id,
+            "Razorpay order does not belong to a known checkout"
+        );
 
         return Err(StatusCode::NOT_FOUND);
     };
 
-    match event_type {
-        "payment.captured" => {
-            let finalized = queries::finalize_paid_intent(&state.db, intent_id)
-                .await
-                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    // -----------------------------------------------------
+    // 10. Transactional payment reconciliation
+    // -----------------------------------------------------
+    //
+    // payment.captured:
+    //
+    // checkout
+    //     ↓
+    // PAID
+    //
+    // intent
+    //     ↓
+    // CONSUMED
+    //
+    // inventory
+    //     ↓
+    // RESERVED -> COMPLETED
+    //
+    // All state transitions happen inside one DB
+    // transaction.
+    //
+    // payment.failed:
+    //
+    // checkout
+    //     ↓
+    // FAILED
+    //
+    // intent
+    //     ↓
+    // PROCESSING -> AUTHORIZED
+    //
+    // inventory
+    //     ↓
+    // RESERVED -> RELEASED
+    //
+    // -----------------------------------------------------
 
-            if !finalized {
-                let _ = queries::mark_webhook_failed(&state.db, event_id).await;
+    let reconciliation_result = match checkout_status {
+        "PAID" => queries::reconcile_successful_payment(&state.db, order_id, intent_id).await,
 
-                return Err(StatusCode::CONFLICT);
-            }
+        "FAILED" => queries::reconcile_failed_payment(&state.db, order_id, intent_id).await,
 
-            crate::services::inventory_service::complete_checkout_inventory(&state.db, intent_id)
-                .await
-                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-        }
+        _ => unreachable!(),
+    };
 
-        "payment.failed" => {
-            let released = queries::release_failed_intent(&state.db, intent_id)
-                .await
-                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    if let Err(error) = reconciliation_result {
+        tracing::error!(
+            event_id = %event_id,
+            order_id = %order_id,
+            intent_id = %intent_id,
+            event_type = %event_type,
+            error = ?error,
+            "Razorpay payment reconciliation failed"
+        );
 
-            if released {
-                crate::services::inventory_service::release_checkout_inventory(
-                    &state.db, intent_id,
-                )
-                .await
-                .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-            }
-        }
+        let _ = queries::mark_webhook_failed(&state.db, event_id).await;
 
-        _ => {}
+        return Err(StatusCode::INTERNAL_SERVER_ERROR);
     }
 
     // -----------------------------------------------------
-    // 9. Audit event
+    // 11. Audit event
     // -----------------------------------------------------
 
     let audit_status = if checkout_status == "PAID" {
@@ -223,29 +277,53 @@ pub async fn razorpay_webhook(
         audit_status,
         audit_message,
         serde_json::json!({
-            "webhook_event_id":
-                event_id,
+            "webhook_event_id": event_id,
 
-            "razorpay_order_id":
-                order_id,
+            "razorpay_order_id": order_id,
 
             "razorpay_payment_id":
                 razorpay_payment_id,
+
+            "agent_intent_id": intent_id,
 
             "checkout_status":
                 checkout_status,
         }),
     )
     .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    .map_err(|error| {
+        tracing::error!(
+            event_id = %event_id,
+            error = ?error,
+            "Failed to create payment audit event"
+        );
+
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     // -----------------------------------------------------
-    // 10. Mark webhook processed
+    // 12. Mark webhook processed
     // -----------------------------------------------------
 
     queries::mark_webhook_processed(&state.db, event_id)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|error| {
+            tracing::error!(
+                event_id = %event_id,
+                error = ?error,
+                "Failed to mark webhook processed"
+            );
+
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    tracing::info!(
+        event_id = %event_id,
+        order_id = %order_id,
+        intent_id = %intent_id,
+        event_type = %event_type,
+        "Razorpay webhook processed successfully"
+    );
 
     Ok(StatusCode::OK)
 }

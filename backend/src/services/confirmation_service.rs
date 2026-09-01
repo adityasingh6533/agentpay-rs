@@ -62,6 +62,20 @@ pub async fn create_confirmation(
     .execute(pool)
     .await?;
 
+    crate::db::queries::create_audit_event(
+        pool,
+        request.session_id,
+        "CUSTOMER_CONFIRMATION_REQUESTED",
+        "SYSTEM",
+        "PENDING",
+        "Customer confirmation token was generated for a review-gated checkout intent.",
+        serde_json::json!({
+            "intent_id": request.intent_id,
+            "expires_at": expires_at,
+        }),
+    )
+    .await?;
+
     Ok((
         ConfirmationResponse {
             intent_id: request.intent_id,
@@ -108,6 +122,19 @@ pub async fn consume_confirmation(
             "Invalid, expired, or already-used confirmation token".to_string(),
         ));
     }
+
+    crate::db::queries::create_audit_event(
+        pool,
+        session_id,
+        "CUSTOMER_CONFIRMATION_ACCEPTED",
+        "CUSTOMER",
+        "SUCCESS",
+        "Customer confirmation token was consumed before checkout execution.",
+        serde_json::json!({
+            "intent_id": intent_id,
+        }),
+    )
+    .await?;
 
     Ok(())
 }

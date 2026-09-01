@@ -645,6 +645,24 @@
   font-size: 6px;
 }
 
+.chat-demo-prompts {
+  display: flex;
+  justify-content: center;
+  gap: 7px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.chat-demo-prompts button {
+  border: 1px solid rgba(128, 101, 245, .24);
+  border-radius: 6px;
+  padding: 7px 9px;
+  color: #a99aff;
+  background: rgba(128, 101, 245, .07);
+  font-size: 6px;
+  font-weight: 800;
+}
+
 .chat-message {
   display: flex;
   gap: 7px;

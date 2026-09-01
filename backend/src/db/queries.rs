@@ -557,7 +557,7 @@ pub async fn create_checkout_for_intent(
             $6,
             $7
         )
-        ON CONFLICT (agent_intent_id)
+        ON CONFLICT (agent_intent_id) WHERE agent_intent_id IS NOT NULL
         DO UPDATE SET
             razorpay_order_id = EXCLUDED.razorpay_order_id,
             status = 'PENDING'::checkout_status,
@@ -586,25 +586,48 @@ pub async fn reserve_inventory(
     product_ids: &[Uuid],
     expires_at: DateTime<Utc>,
 ) -> Result<bool, sqlx::Error> {
+    let mut tx = pool.begin().await?;
+
+    let unique_product_count = product_ids
+        .iter()
+        .copied()
+        .collect::<std::collections::HashSet<_>>()
+        .len();
+
+    let locked_products = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        WITH requested AS (
+            SELECT DISTINCT unnest($1::uuid[]) AS product_id
+        )
+        SELECT p.id
+        FROM products p
+        JOIN requested r ON r.product_id = p.id
+        WHERE p.active = TRUE
+        ORDER BY p.id
+        FOR UPDATE OF p
+        "#,
+    )
+    .bind(product_ids)
+    .fetch_all(&mut *tx)
+    .await?;
+
+    if locked_products.len() != unique_product_count {
+        return Ok(false);
+    }
+
     let result = sqlx::query(
         r#"
         WITH requested AS (
             SELECT DISTINCT unnest($2::uuid[]) AS product_id
         ),
-        locked_products AS (
-            SELECT p.id, p.stock
+        available AS (
+            SELECT p.id AS product_id
             FROM products p
             JOIN requested r ON r.product_id = p.id
-            WHERE p.active = TRUE
-            FOR UPDATE OF p
-        ),
-        available AS (
-            SELECT lp.id AS product_id
-            FROM locked_products lp
-            WHERE lp.stock > (
-                SELECT COUNT(*)::bigint
+            WHERE p.stock > (
+                SELECT COALESCE(SUM(ir.quantity), 0)::bigint
                 FROM inventory_reservations ir
-                WHERE ir.product_id = lp.id
+                WHERE ir.product_id = p.id
                   AND ir.status = 'RESERVED'::inventory_reservation_status
                   AND ir.expires_at > NOW()
             )
@@ -629,15 +652,16 @@ pub async fn reserve_inventory(
     .bind(intent_id)
     .bind(product_ids)
     .bind(expires_at)
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
 
-    Ok(result.rows_affected() as usize
-        == product_ids
-            .iter()
-            .copied()
-            .collect::<std::collections::HashSet<_>>()
-            .len())
+    let reserved_all = result.rows_affected() as usize == unique_product_count;
+
+    if reserved_all {
+        tx.commit().await?;
+    }
+
+    Ok(reserved_all)
 }
 
 pub async fn release_inventory(pool: &PgPool, intent_id: Uuid) -> Result<(), sqlx::Error> {
@@ -654,45 +678,6 @@ pub async fn release_inventory(pool: &PgPool, intent_id: Uuid) -> Result<(), sql
     .bind(intent_id)
     .execute(pool)
     .await?;
-
-    Ok(())
-}
-
-pub async fn complete_inventory(pool: &PgPool, intent_id: Uuid) -> Result<(), sqlx::Error> {
-    let mut tx = pool.begin().await?;
-
-    sqlx::query(
-        r#"
-        UPDATE products p
-        SET
-            stock = p.stock - ir.quantity,
-            updated_at = NOW()
-        FROM inventory_reservations ir
-        WHERE ir.intent_id = $1
-          AND ir.product_id = p.id
-          AND ir.status = 'RESERVED'::inventory_reservation_status
-          AND p.stock >= ir.quantity
-        "#,
-    )
-    .bind(intent_id)
-    .execute(&mut *tx)
-    .await?;
-
-    sqlx::query(
-        r#"
-        UPDATE inventory_reservations
-        SET
-            status = 'COMPLETED'::inventory_reservation_status,
-            updated_at = NOW()
-        WHERE intent_id = $1
-          AND status = 'RESERVED'::inventory_reservation_status
-        "#,
-    )
-    .bind(intent_id)
-    .execute(&mut *tx)
-    .await?;
-
-    tx.commit().await?;
 
     Ok(())
 }
@@ -769,6 +754,31 @@ pub async fn create_audit_event(
     .await
 }
 
+pub async fn get_audit_events(
+    pool: &PgPool,
+    session_id: Uuid,
+) -> Result<Vec<crate::models::AuditEvent>, sqlx::Error> {
+    sqlx::query_as::<_, crate::models::AuditEvent>(
+        r#"
+        SELECT
+            id,
+            session_id,
+            event_type,
+            actor::text AS actor,
+            status,
+            message,
+            metadata,
+            created_at
+        FROM audit_events
+        WHERE session_id = $1
+        ORDER BY created_at ASC
+        "#,
+    )
+    .bind(session_id)
+    .fetch_all(pool)
+    .await
+}
+
 pub async fn insert_webhook_event(
     pool: &PgPool,
     event: &WebhookEventInsert,
@@ -834,27 +844,6 @@ pub async fn mark_webhook_failed(pool: &PgPool, event_id: &str) -> Result<(), sq
     Ok(())
 }
 
-pub async fn update_checkout_from_razorpay(
-    pool: &PgPool,
-    razorpay_order_id: &str,
-    checkout_status: &str,
-) -> Result<Option<Uuid>, sqlx::Error> {
-    sqlx::query_scalar(
-        r#"
-        UPDATE checkouts
-        SET
-            status = $2::checkout_status,
-            updated_at = NOW()
-        WHERE razorpay_order_id = $1
-        RETURNING session_id
-        "#,
-    )
-    .bind(razorpay_order_id)
-    .bind(checkout_status)
-    .fetch_optional(pool)
-    .await
-}
-
 pub async fn get_checkout_reconciliation(
     pool: &PgPool,
     razorpay_order_id: &str,
@@ -872,34 +861,311 @@ pub async fn get_checkout_reconciliation(
     .await
 }
 
-pub async fn finalize_paid_intent(pool: &PgPool, intent_id: Uuid) -> Result<bool, sqlx::Error> {
-    let result = sqlx::query(
+pub async fn reconcile_successful_payment(
+    pool: &PgPool,
+    razorpay_order_id: &str,
+    intent_id: Uuid,
+) -> Result<Uuid, sqlx::Error> {
+    let mut tx = pool.begin().await?;
+
+    // Lock the checkout row so two webhook workers cannot
+    // reconcile the same payment simultaneously.
+    let checkout = sqlx::query_as::<_, (Uuid, Option<Uuid>, String)>(
+        r#"
+        SELECT
+            session_id,
+            agent_intent_id,
+            status::text AS status
+        FROM checkouts
+        WHERE razorpay_order_id = $1
+        FOR UPDATE
+        "#,
+    )
+    .bind(razorpay_order_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+
+    let Some((session_id, checkout_intent_id, status)) = checkout else {
+        return Err(sqlx::Error::RowNotFound);
+    };
+
+    if checkout_intent_id != Some(intent_id) {
+        return Err(sqlx::Error::Protocol(
+            "Checkout does not belong to supplied agent intent".to_string(),
+        ));
+    }
+
+    // Idempotent success handling.
+    if status == "PAID" {
+        tx.commit().await?;
+        return Ok(session_id);
+    }
+
+    // Only PROCESSING checkout may become PAID.
+    if status != "PENDING" && status != "CREATED" {
+        return Err(sqlx::Error::Protocol(
+            "Checkout is not in a payable state".to_string(),
+        ));
+    }
+
+    sqlx::query(
+        r#"
+        UPDATE checkouts
+        SET
+            status = 'PAID',
+            updated_at = NOW()
+        WHERE razorpay_order_id = $1
+        "#,
+    )
+    .bind(razorpay_order_id)
+    .execute(&mut *tx)
+    .await?;
+
+    let intent_result = sqlx::query(
         r#"
         UPDATE signed_agent_intents
-        SET status = 'CONSUMED'
+        SET
+            status = 'CONSUMED'
         WHERE id = $1
           AND status = 'PROCESSING'
         "#,
     )
     .bind(intent_id)
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
 
-    Ok(result.rows_affected() == 1)
+    if intent_result.rows_affected() != 1 {
+        return Err(sqlx::Error::Protocol(
+            "Agent intent is not in PROCESSING state".to_string(),
+        ));
+    }
+
+    // RESERVED -> COMPLETED.
+    //
+    // Stock was not deducted during reservation.
+    // It is deducted here, after confirmed payment.
+    let reservations = sqlx::query_as::<_, (Uuid, i64)>(
+        r#"
+        SELECT
+            product_id,
+            quantity
+        FROM inventory_reservations
+        WHERE intent_id = $1
+          AND status = 'RESERVED'
+        FOR UPDATE
+        "#,
+    )
+    .bind(intent_id)
+    .fetch_all(&mut *tx)
+    .await?;
+
+    for (product_id, quantity) in reservations {
+        let result = sqlx::query(
+            r#"
+            UPDATE products
+            SET
+                stock = stock - $2,
+                updated_at = NOW()
+            WHERE id = $1
+              AND stock >= $2
+            "#,
+        )
+        .bind(product_id)
+        .bind(quantity)
+        .execute(&mut *tx)
+        .await?;
+
+        if result.rows_affected() != 1 {
+            return Err(sqlx::Error::Protocol(
+                "Insufficient inventory while finalizing payment".to_string(),
+            ));
+        }
+
+        sqlx::query(
+            r#"
+            UPDATE inventory_reservations
+            SET
+                status = 'COMPLETED',
+                updated_at = NOW()
+            WHERE intent_id = $1
+              AND product_id = $2
+              AND status = 'RESERVED'
+            "#,
+        )
+        .bind(intent_id)
+        .bind(product_id)
+        .execute(&mut *tx)
+        .await?;
+    }
+
+    tx.commit().await?;
+
+    Ok(session_id)
 }
 
-pub async fn release_failed_intent(pool: &PgPool, intent_id: Uuid) -> Result<bool, sqlx::Error> {
-    let result = sqlx::query(
+pub async fn reconcile_failed_payment(
+    pool: &PgPool,
+    razorpay_order_id: &str,
+    intent_id: Uuid,
+) -> Result<Uuid, sqlx::Error> {
+    let mut tx = pool.begin().await?;
+
+    let checkout = sqlx::query_as::<_, (Uuid, Option<Uuid>, String)>(
+        r#"
+        SELECT
+            session_id,
+            agent_intent_id,
+            status::text AS status
+        FROM checkouts
+        WHERE razorpay_order_id = $1
+        FOR UPDATE
+        "#,
+    )
+    .bind(razorpay_order_id)
+    .fetch_optional(&mut *tx)
+    .await?;
+
+    let Some((session_id, checkout_intent_id, status)) = checkout else {
+        return Err(sqlx::Error::RowNotFound);
+    };
+
+    if checkout_intent_id != Some(intent_id) {
+        return Err(sqlx::Error::Protocol(
+            "Checkout does not belong to supplied agent intent".to_string(),
+        ));
+    }
+
+    // Duplicate/late failed event after payment already succeeded.
+    if status == "PAID" {
+        tx.commit().await?;
+        return Ok(session_id);
+    }
+
+    sqlx::query(
+        r#"
+        UPDATE checkouts
+        SET
+            status = 'FAILED',
+            updated_at = NOW()
+        WHERE razorpay_order_id = $1
+        "#,
+    )
+    .bind(razorpay_order_id)
+    .execute(&mut *tx)
+    .await?;
+
+    sqlx::query(
         r#"
         UPDATE signed_agent_intents
-        SET status = 'AUTHORIZED'
+        SET
+            status = 'AUTHORIZED'
         WHERE id = $1
           AND status = 'PROCESSING'
         "#,
     )
     .bind(intent_id)
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
 
-    Ok(result.rows_affected() == 1)
+    let reservations = sqlx::query_as::<_, (Uuid, i64)>(
+        r#"
+        SELECT
+            product_id,
+            quantity
+        FROM inventory_reservations
+        WHERE intent_id = $1
+          AND status = 'RESERVED'
+        FOR UPDATE
+        "#,
+    )
+    .bind(intent_id)
+    .fetch_all(&mut *tx)
+    .await?;
+
+    for (product_id, quantity) in reservations {
+        sqlx::query(
+            r#"
+            UPDATE inventory_reservations
+            SET
+                status = 'RELEASED',
+                updated_at = NOW()
+            WHERE intent_id = $1
+              AND product_id = $2
+              AND status = 'RESERVED'
+            "#,
+        )
+        .bind(intent_id)
+        .bind(product_id)
+        .execute(&mut *tx)
+        .await?;
+
+        // No stock decrement happened during reservation,
+        // therefore nothing needs to be added back.
+        let _ = quantity;
+    }
+
+    tx.commit().await?;
+
+    Ok(session_id)
+}
+
+pub async fn get_agent_catalog(
+    pool: &PgPool,
+    _merchant_id: Uuid,
+) -> Result<Vec<crate::models::AgentProduct>, sqlx::Error> {
+    sqlx::query_as::<
+        _,
+        (
+            Uuid,
+            String,
+            Option<String>,
+            String,
+            i64,
+            String,
+            i32,
+            Option<f64>,
+            i64,
+        ),
+    >(
+        r#"
+        SELECT
+            id,
+            name,
+            description,
+            category,
+            price,
+            currency,
+            stock,
+            rating,
+            review_count
+        FROM products
+        WHERE active = TRUE
+        ORDER BY
+            stock > 0 DESC,
+            rating DESC NULLS LAST,
+            id
+        "#,
+    )
+    .fetch_all(pool)
+    .await
+    .map(|rows| {
+        rows.into_iter()
+            .map(
+                |(id, name, description, category, price, currency, stock, rating, reviews)| {
+                    crate::models::AgentProduct {
+                        id,
+                        name,
+                        description,
+                        category,
+                        price,
+                        currency,
+                        stock,
+                        rating,
+                        reviews,
+                        available: stock > 0,
+                    }
+                },
+            )
+            .collect()
+    })
 }

@@ -1,46 +1,111 @@
-# Getting Started with Create React App
+# AgentPay Frontend
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+Frontend for the Razorpay Track 01 build: an AI revenue agent that recommends products, adds a cross-sell, gates every money action, and shows an audit trail.
 
-## Available Scripts
+## What To Demo
 
-In the project directory, you can run:
+1. Start backend from `backend`:
 
-### `npm start`
+   ```powershell
+   cargo run
+   ```
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+2. Start frontend from `frontend`:
 
-The page will reload if you make edits.\
-You will also see any lint errors in the console.
+   ```powershell
+   npm start
+   ```
 
-### `npm test`
+   If port 3000 is busy:
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+   ```powershell
+   $env:PORT=3001; npm start
+   ```
 
-### `npm run build`
+3. Open `/agent`.
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+4. Click `Running bundle` or type:
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+   ```text
+   I need running shoes under 1500
+   ```
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+5. The agent should:
 
-### `npm run eject`
+   - create a real backend session
+   - understand customer intent
+   - search the catalog
+   - recommend `Velocity Running Shoes`
+   - add `ProFit Running Socks` as a cross-sell
+   - build a cart around `₹1,498`
+   - wait before any payment action
 
-**Note: this is a one-way operation. Once you `eject`, you can’t go back!**
+6. Click `Authorize` using seeded merchant id:
 
-If you aren’t satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+   ```text
+   40000000-0000-0000-0000-000000000001
+   ```
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you’re on your own.
+7. If authorized, click `Create Razorpay Order`.
 
-You don’t have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn’t feel obligated to use this feature. However we understand that this tool wouldn’t be useful if you couldn’t customize it when you are ready for it.
+8. Open the audit section and show every recorded step.
 
-## Learn More
+## Confirmation Demo
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+Use:
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+```text
+I need a sports jacket under 2000
+```
+
+This should create a higher-value cart around `₹1,899`, require customer confirmation, then allow execution only after `Confirm action`.
+
+## Failure Demo
+
+If Razorpay credentials or network access are unavailable, order creation fails safely. The backend keeps the signed intent bounded, releases reserved inventory, and records the failure in the audit trail.
+
+## Why This Matches The Problem Statement
+
+- `Problem Taste`: grows merchant revenue with recommendation plus cross-sell.
+- `Build Quality`: Rust backend owns pricing, policy, inventory, signatures and Razorpay order creation.
+- `AI Judgment`: LLM path exists, with deterministic fallback so the demo remains reliable.
+- `Safety & Control`: checkout requires signed authorization and customer confirmation when policy says so.
+- `Audit Trail`: every important agent and money action is visible.
+- `Failure Recovery`: Razorpay/API failure is handled without silently completing payment.
+
+## Environment
+
+Backend `.env`:
+
+```text
+DATABASE_URL=postgres://...
+AGENT_SIGNING_SECRET=...
+RAZORPAY_KEY_ID=...
+RAZORPAY_KEY_SECRET=...
+RAZORPAY_WEBHOOK_SECRET=...
+```
+
+Frontend `.env`:
+
+```text
+REACT_APP_API_URL=http://localhost:8080/api
+REACT_APP_CUSTOMER_ID=demo-customer
+REACT_APP_MERCHANT_ID=40000000-0000-0000-0000-000000000001
+```
+
+AI provider keys are optional for demo reliability because the backend has a deterministic commerce-agent fallback.
+
+## Checks
+
+Run before submission:
+
+```powershell
+cd backend
+cargo test
+```
+
+```powershell
+cd frontend
+npx.cmd tsc --noEmit
+npm.cmd run build
+```

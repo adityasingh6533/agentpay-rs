@@ -3,7 +3,11 @@ use crate::{
     agent::state::{CreateSessionRequest, CreateSessionResponse},
     services::growth_service,
 };
-use axum::{Json, extract::State, http::StatusCode};
+use axum::{
+    Json,
+    extract::{Path, State},
+    http::StatusCode,
+};
 use uuid::Uuid;
 
 use crate::errors::AppError;
@@ -47,4 +51,13 @@ pub async fn process_message(
     .await?;
 
     Ok(Json(AgentMessageResponse { result }))
+}
+
+pub async fn get_audit_trail(
+    State(state): State<AppState>,
+    Path(session_id): Path<Uuid>,
+) -> Result<Json<Vec<crate::models::AuditEvent>>, AppError> {
+    let events = crate::db::queries::get_audit_events(&state.db, session_id).await?;
+
+    Ok(Json(events))
 }

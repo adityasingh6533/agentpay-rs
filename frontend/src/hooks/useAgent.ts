@@ -17,15 +17,12 @@ import type {
   SpendingLimits,
 } from "../types";
 
-/* =========================================================
-   AGENT STATE MACHINE
-   ========================================================= */
-
 export type AgentStatus =
   | "IDLE"
   | "UNDERSTANDING"
   | "SEARCHING"
   | "DECIDING"
+  | "READY_FOR_AUTHORIZATION"
   | "GUARDRAIL_CHECK"
   | "AWAITING_CONFIRMATION"
   | "AUTHORIZED"
@@ -40,57 +37,86 @@ export interface AgentError {
   code?: string;
 }
 
-/* =========================================================
-   HOOK OPTIONS
-   ========================================================= */
+export interface BackendAgentResult {
+  message: string;
+  intent: {
+    category?: string;
+    max_price?: number;
+    keywords: string[];
+    wants_recommendation: boolean;
+    confidence: number;
+  };
+  recommendations: {
+    product_id: string;
+    product_name: string;
+    price: number;
+    score: number;
+    reasons: string[];
+  }[];
+  cross_sell?: {
+    product_id: string;
+    product_name: string;
+    price: number;
+    confidence: number;
+    support_count: number;
+  };
+}
+
+type CheckoutAuthorizationResult = {
+  intent_id: string;
+  decision: "AUTHORIZED" | "REVIEW" | "BLOCKED";
+  reason: string;
+  requires_confirmation: boolean;
+  amount: number;
+  currency: string;
+};
+
+type CheckoutExecutionResult = {
+  status: string;
+  intent_id: string;
+  razorpay_order_id?: string;
+  amount?: number;
+  currency?: string;
+  message: string;
+};
 
 interface UseAgentOptions {
   customerId: string;
 }
-
-/* =========================================================
-   HOOK
-   ========================================================= */
 
 export function useAgent({
   customerId,
 }: UseAgentOptions) {
   const [status, setStatus] =
     useState<AgentStatus>("IDLE");
-
   const [session, setSession] =
     useState<AgentSession | null>(null);
-
   const [intent, setIntent] =
     useState<AgentIntent | null>(null);
-
   const [decision, setDecision] =
     useState<AgentDecision | null>(null);
-
   const [recommendations, setRecommendations] =
     useState<Recommendation[]>([]);
-
   const [cart, setCart] =
     useState<Cart | null>(null);
-
   const [limits, setLimits] =
     useState<SpendingLimits | null>(null);
-
   const [lastAction, setLastAction] =
     useState<AgentAction | null>(null);
-
   const [auditTrail, setAuditTrail] =
     useState<AuditEvent[]>([]);
-
+  const [agentResult, setAgentResult] =
+    useState<BackendAgentResult | null>(null);
+  const [authorization, setAuthorization] =
+    useState<CheckoutAuthorizationResult | null>(null);
+  const [confirmationToken, setConfirmationToken] =
+    useState<string | null>(null);
+  const [checkoutResult, setCheckoutResult] =
+    useState<CheckoutExecutionResult | null>(null);
   const [error, setError] =
     useState<AgentError | null>(null);
-
   const [isLoading, setIsLoading] =
     useState(false);
-
-  /* =======================================================
-     ERROR HANDLING
-     ======================================================= */
 
   const clearError = useCallback(() => {
     setError(null);
@@ -98,32 +124,45 @@ export function useAgent({
 
   const handleError = useCallback(
     (err: unknown) => {
-      console.error("Agent error:", err);
-
       const message =
         err instanceof Error
           ? err.message
           : "Agent operation failed.";
 
-      setError({
-        message,
-      });
-
+      setError({ message });
       setStatus("FAILED");
     },
     []
   );
 
-  /* =======================================================
-     SESSION
-     ======================================================= */
+  const loadAuditTrail = useCallback(
+    async (sessionId = session?.id) => {
+      if (!sessionId) {
+        return [];
+      }
+
+      try {
+        const events =
+          await api.agent.getAuditTrail(
+            sessionId
+          );
+
+        setAuditTrail(events);
+        return events;
+      } catch (err) {
+        handleError(err);
+        return [];
+      }
+    },
+    [session?.id, handleError]
+  );
 
   const startSession = useCallback(
     async () => {
       if (!customerId) {
         setError({
           message:
-            "Customer identity is required to start an agent session.",
+            "Customer identity is required.",
         });
 
         return null;
@@ -139,13 +178,10 @@ export function useAgent({
           );
 
         setSession(newSession);
-
         setStatus("IDLE");
-
         return newSession;
       } catch (err) {
         handleError(err);
-
         return null;
       } finally {
         setIsLoading(false);
@@ -158,65 +194,22 @@ export function useAgent({
     ]
   );
 
-  /* =======================================================
-     REFRESH SESSION
-     ======================================================= */
-
-  const refreshSession = useCallback(
-    async () => {
-      if (!session?.id) {
-        return;
-      }
-
-      try {
-        const updated =
-          await api.agent.getSession(
-            session.id
-          );
-
-        setSession(updated);
-
-        if (updated.decision) {
-          setDecision(
-            updated.decision
-          );
-        }
-
-        setCart(
-          updated.decision?.cart ??
-            null
-        );
-
-        setAuditTrail(
-          updated.auditTrail
-        );
-      } catch (err) {
-        handleError(err);
-      }
-    },
-    [session?.id, handleError]
-  );
-
-  /* =======================================================
-     SEND USER INTENT
-     ======================================================= */
-
   const sendMessage = useCallback(
     async (message: string) => {
-      if (!message.trim()) {
-        return;
+      const trimmed = message.trim();
+
+      if (!trimmed) {
+        return null;
       }
 
-      clearError();
-
       setIsLoading(true);
+      clearError();
+      setAuthorization(null);
+      setConfirmationToken(null);
+      setCheckoutResult(null);
+      setLastAction(null);
 
       try {
-        /*
-         * STEP 1
-         * Ensure an agent session exists.
-         */
-
         let activeSession = session;
 
         if (!activeSession) {
@@ -228,122 +221,137 @@ export function useAgent({
           setSession(activeSession);
         }
 
-        /*
-         * STEP 2
-         * Parse / register user intent.
-         */
-
         setStatus("UNDERSTANDING");
-
-        const createdIntent =
-          await api.agent.createIntent({
-            sessionId: activeSession.id,
-            message: message.trim(),
-          });
-
-        setIntent(createdIntent);
-
-        /*
-         * STEP 3
-         * Search catalog / generate recommendations.
-         */
-
         setStatus("SEARCHING");
 
-        const recommendationResponse =
-          await api.agent.recommendations({
-            sessionId:
-              activeSession.id,
-
-            intentId:
-              createdIntent.id,
+        const response =
+          await api.agent.processMessage({
+            session_id: activeSession.id,
+            message: trimmed,
           });
+
+        const result = response.result;
+        const primary =
+          result.recommendations[0];
+
+        setAgentResult(result);
+
+        const nextIntent: AgentIntent = {
+          id: activeSession.id,
+          sessionId: activeSession.id,
+          message: trimmed,
+          category: result.intent.category,
+          budget: result.intent.max_price,
+          confidence:
+            result.intent.confidence,
+          createdAt:
+            new Date().toISOString(),
+        };
+
+        setIntent(nextIntent);
+
+        const nextRecommendations =
+          result.recommendations.map(
+            (item) => ({
+              product: {
+                id: item.product_id,
+                name: item.product_name,
+                description:
+                  item.reasons.join(" · "),
+                category:
+                  result.intent.category ||
+                  "Commerce",
+                price: item.price,
+                currency: "INR",
+                rating: 0,
+                reviewCount: 0,
+                stock: 0,
+                active: true,
+              },
+              matchScore: item.score,
+              reason:
+                item.reasons.join(" · "),
+            })
+          );
 
         setRecommendations(
-          recommendationResponse
-            .recommendations
+          nextRecommendations
         );
 
-        /*
-         * STEP 4
-         * Agent makes a decision.
-         */
-
-        setStatus("DECIDING");
-
-        const createdDecision =
-          await api.agent.createDecision({
-            sessionId:
-              activeSession.id,
-
-            intentId:
-              createdIntent.id,
+        if (!primary) {
+          setDecision(null);
+          setCart(null);
+          setStatus("FAILED");
+          setError({
+            message:
+              "The agent could not find a suitable product.",
           });
 
-        setDecision(
-          createdDecision
-        );
-
-        /*
-         * STEP 5
-         * Evaluate guardrails.
-         *
-         * IMPORTANT:
-         * No money action is executed here.
-         */
-
-        setStatus("GUARDRAIL_CHECK");
-
-        const guardrails =
-          createdDecision.guardrails;
-
-        const blocked =
-          guardrails.some(
-            (guard) =>
-              guard.status ===
-              "BLOCKED"
+          await loadAuditTrail(
+            activeSession.id
           );
 
-        const reviewRequired =
-          guardrails.some(
-            (guard) =>
-              guard.status ===
-              "REVIEW_REQUIRED"
-          );
-
-        if (blocked) {
-          setStatus("BLOCKED");
-        } else if (reviewRequired) {
-          setStatus(
-            "REVIEW_REQUIRED"
-          );
-        } else if (
-          createdDecision.requiresConfirmation
-        ) {
-          setStatus(
-            "AWAITING_CONFIRMATION"
-          );
-        } else {
-          /*
-           * Even if policy passes,
-           * money action is NOT
-           * automatically executed.
-           */
-          setStatus(
-            "AWAITING_CONFIRMATION"
-          );
+          return result;
         }
 
-        /*
-         * Refresh audit/session state.
-         */
+        const nextCart = buildCart(
+          activeSession.id,
+          result
+        );
+        const confidence = Math.round(
+          result.intent.confidence * 100
+        );
 
-        await refreshSession();
+        const nextDecision: AgentDecision = {
+          id: `decision-${activeSession.id}`,
+          sessionId: activeSession.id,
+          type:
+            result.cross_sell
+              ? "RECOMMEND_WITH_CROSS_SELL"
+              : "RECOMMEND_PRODUCT",
+          reasoning: buildReasoning(result),
+          confidence,
+          recommendation:
+            nextRecommendations[0],
+          cart: nextCart,
+          guardrails: [
+            {
+              id: "recommendation-only",
+              name:
+                "Recommendation created without payment execution",
+              status: "PASS",
+            },
+            {
+              id: "server-pricing",
+              name:
+                "Checkout amount will be recalculated by backend",
+              status: "PASS",
+            },
+            {
+              id: "policy-required",
+              name:
+                "Money action requires merchant policy authorization",
+              status: "REVIEW_REQUIRED",
+            },
+          ],
+          requiresConfirmation: true,
+          createdAt:
+            new Date().toISOString(),
+        };
 
-        return createdDecision;
+        setCart(nextCart);
+        setDecision(nextDecision);
+        setStatus(
+          "READY_FOR_AUTHORIZATION"
+        );
+
+        await loadAuditTrail(
+          activeSession.id
+        );
+
+        return result;
       } catch (err) {
         handleError(err);
-
         return null;
       } finally {
         setIsLoading(false);
@@ -354,128 +362,117 @@ export function useAgent({
       session,
       clearError,
       handleError,
-      refreshSession,
+      loadAuditTrail,
     ]
   );
 
-  /* =======================================================
-     CUSTOMER CONFIRMATION
-     ======================================================= */
-
-  const confirmAction = useCallback(
-    async () => {
-      if (
-        !session ||
-        !decision
-      ) {
-        setError({
-          message:
-            "No pending agent decision is available.",
-        });
-
-        return null;
-      }
-
-      setIsLoading(true);
-      clearError();
-
-      try {
-        /*
-         * Authorization happens ONLY
-         * after customer confirmation.
-         */
-
-        setStatus("AUTHORIZED");
-
-        const action =
-          await api.agent.authorizeAction({
-            sessionId:
-              session.id,
-
-            decisionId:
-              decision.id,
-
-            type:
-              "CREATE_ORDER",
-
-            payload: {
-              confirmation: true,
-            },
+  const authorizeCheckout =
+    useCallback(
+      async (merchantId: string) => {
+        if (!session || !agentResult) {
+          setError({
+            message:
+              "A valid agent session and recommendation are required.",
           });
 
-        setLastAction(action);
+          return null;
+        }
 
-        /*
-         * Backend may decide that
-         * the action needs human review.
-         */
+        const productIds =
+          getCheckoutProductIds(agentResult);
 
-        if (
-          action.status ===
-          "REVIEW_REQUIRED"
-        ) {
-          setStatus(
-            "REVIEW_REQUIRED"
+        if (productIds.length === 0) {
+          setError({
+            message:
+              "No product is available for checkout.",
+          });
+
+          return null;
+        }
+
+        setIsLoading(true);
+        clearError();
+        setStatus("GUARDRAIL_CHECK");
+
+        try {
+          const result =
+            await api.checkout.authorize({
+              session_id: session.id,
+              customer_id:
+                session.customerId,
+              merchant_id: merchantId,
+              product_ids: productIds,
+              amount: cart?.total || 0,
+              currency:
+                cart?.currency || "INR",
+              category:
+                agentResult.intent
+                  .category || "GENERAL",
+            });
+
+          setAuthorization(result);
+          setDecision((current) =>
+            current
+              ? {
+                  ...current,
+                  guardrails:
+                    buildGuardrails(result),
+                  requiresConfirmation:
+                    result.requires_confirmation,
+                }
+              : current
           );
 
-          return action;
+          if (
+            result.decision === "BLOCKED"
+          ) {
+            setStatus("BLOCKED");
+          } else if (
+            result.decision === "REVIEW" ||
+            result.requires_confirmation
+          ) {
+            setStatus(
+              "AWAITING_CONFIRMATION"
+            );
+          } else {
+            setStatus("AUTHORIZED");
+          }
+
+          await loadAuditTrail(session.id);
+          return result;
+        } catch (err) {
+          handleError(err);
+          return null;
+        } finally {
+          setIsLoading(false);
         }
+      },
+      [
+        session,
+        agentResult,
+        cart,
+        clearError,
+        handleError,
+        loadAuditTrail,
+      ]
+    );
 
-        if (
-          action.status ===
-          "BLOCKED"
-        ) {
-          setStatus("BLOCKED");
-
-          return action;
-        }
-
-        /*
-         * Action is authorized.
-         * Actual execution is a separate step.
-         */
-
-        return action;
-      } catch (err) {
-        handleError(err);
-
-        return null;
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [
-      session,
-      decision,
-      clearError,
-      handleError,
-    ]
-  );
-
-  /* =======================================================
-     EXECUTE AUTHORIZED ACTION
-     ======================================================= */
-
-  const executeAuthorizedAction =
+  const confirmAction =
     useCallback(async () => {
-      if (!lastAction) {
+      if (!session || !authorization) {
         setError({
           message:
-            "No authorized action is available.",
+            "No checkout authorization is available.",
         });
 
         return null;
       }
 
       if (
-        lastAction.status !==
-        "AUTHORIZED"
+        authorization.decision ===
+        "BLOCKED"
       ) {
-        setError({
-          message:
-            "Only an authorized action can be executed.",
-        });
-
+        setStatus("BLOCKED");
         return null;
       }
 
@@ -483,87 +480,83 @@ export function useAgent({
       clearError();
 
       try {
-        const executed =
-          await api.agent.executeAction(
-            lastAction.id
+        const response =
+          await api.checkout.requestConfirmation(
+            {
+              intent_id:
+                authorization.intent_id,
+              session_id: session.id,
+            }
           );
 
-        setLastAction(executed);
+        const token =
+          extractConfirmationToken(
+            response.status
+          );
 
-        if (
-          executed.status ===
-          "EXECUTED"
-        ) {
-          setStatus("CHECKOUT");
-        }
-
-        if (
-          executed.status ===
-          "REVIEW_REQUIRED"
-        ) {
-          setStatus(
-            "REVIEW_REQUIRED"
+        if (!token) {
+          throw new Error(
+            "Confirmation token was not returned by the backend."
           );
         }
 
-        if (
-          executed.status ===
-          "BLOCKED"
-        ) {
-          setStatus("BLOCKED");
-        }
+        setConfirmationToken(token);
+        setAuthorization({
+          ...authorization,
+          decision: "AUTHORIZED",
+          requires_confirmation: true,
+        });
+        setStatus("AUTHORIZED");
 
-        return executed;
+        await loadAuditTrail(session.id);
+        return response;
       } catch (err) {
         handleError(err);
-
         return null;
       } finally {
         setIsLoading(false);
       }
     }, [
-      lastAction,
+      session,
+      authorization,
       clearError,
       handleError,
+      loadAuditTrail,
     ]);
 
-  /* =======================================================
-     CART
-     ======================================================= */
-
-  const loadCart = useCallback(
-    async () => {
-      if (!session?.id) {
-        return null;
-      }
-
-      try {
-        const currentCart =
-          await api.cart.get(
-            session.id
-          );
-
-        setCart(currentCart);
-
-        return currentCart;
-      } catch (err) {
-        handleError(err);
-
-        return null;
-      }
-    },
-    [session?.id, handleError]
-  );
-
-  const addProduct = useCallback(
-    async (
-      productId: string,
-      quantity = 1
-    ) => {
-      if (!session?.id) {
+  const executeCheckout =
+    useCallback(async () => {
+      if (!session || !authorization) {
         setError({
           message:
-            "Start an agent session before modifying the cart.",
+            "No authorized checkout is available.",
+        });
+
+        return null;
+      }
+
+      if (
+        authorization.decision !==
+        "AUTHORIZED"
+      ) {
+        setError({
+          message:
+            "Checkout has not been authorized.",
+        });
+
+        return null;
+      }
+
+      if (
+        authorization.requires_confirmation &&
+        !confirmationToken
+      ) {
+        setStatus(
+          "AWAITING_CONFIRMATION"
+        );
+        setError({
+          message:
+            "Customer confirmation is required before checkout.",
         });
 
         return null;
@@ -571,39 +564,58 @@ export function useAgent({
 
       setIsLoading(true);
       clearError();
+      setStatus("CHECKOUT");
 
       try {
-        const updatedCart =
-          await api.cart.add({
-            sessionId:
-              session.id,
-
-            productId,
-
-            quantity,
+        const response =
+          await api.checkout.execute({
+            session_id: session.id,
+            intent_id:
+              authorization.intent_id,
+            ...(confirmationToken
+              ? {
+                  confirmation_token:
+                    confirmationToken,
+                }
+              : {}),
           });
 
-        setCart(updatedCart);
-
-        return updatedCart;
+        setCheckoutResult(response);
+        setStatus("COMPLETED");
+        await loadAuditTrail(session.id);
+        return response;
       } catch (err) {
+        await loadAuditTrail(session.id);
         handleError(err);
-
         return null;
       } finally {
         setIsLoading(false);
       }
-    },
-    [
-      session?.id,
+    }, [
+      session,
+      authorization,
+      confirmationToken,
       clearError,
       handleError,
-    ]
+      loadAuditTrail,
+    ]);
+
+  const loadCart = useCallback(
+    async () => cart,
+    [cart]
   );
 
-  /* =======================================================
-     POLICY
-     ======================================================= */
+  const addProduct = useCallback(
+    async () => {
+      setError({
+        message:
+          "The demo cart is controlled by the agent recommendation.",
+      });
+
+      return cart;
+    },
+    [cart]
+  );
 
   const loadSpendingLimits =
     useCallback(
@@ -615,176 +627,61 @@ export function useAgent({
             );
 
           setLimits(policy);
-
           return policy;
         } catch (err) {
           handleError(err);
-
           return null;
         }
       },
       [handleError]
     );
 
-  /* =======================================================
-     AUDIT
-     ======================================================= */
-
-  const loadAuditTrail =
-    useCallback(async () => {
-      if (!session?.id) {
-        return [];
-      }
-
-      try {
-        const events =
-          await api.agent.getAuditTrail(
-            session.id
-          );
-
-        setAuditTrail(events);
-
-        return events;
-      } catch (err) {
-        handleError(err);
-
-        return [];
-      }
-    }, [
-      session?.id,
-      handleError,
-    ]);
-
-  /* =======================================================
-     CHECKOUT
-     ======================================================= */
-
-  const createCheckout =
-    useCallback(async () => {
-      if (
-        !session?.id ||
-        !cart
-      ) {
-        setError({
-          message:
-            "A valid session and cart are required for checkout.",
-        });
-
-        return null;
-      }
-
-      if (
-        status !== "AUTHORIZED" &&
-        status !== "CHECKOUT"
-      ) {
-        setError({
-          message:
-            "Checkout requires an authorized agent action.",
-        });
-
-        return null;
-      }
-
-      setIsLoading(true);
-      clearError();
-
-      try {
-        setStatus("CHECKOUT");
-
-        const checkout =
-          await api.checkout.create({
-            sessionId:
-              session.id,
-
-            customerId,
-          });
-
-        return checkout;
-      } catch (err) {
-        handleError(err);
-
-        return null;
-      } finally {
-        setIsLoading(false);
-      }
-    }, [
-      session?.id,
-      cart,
-      status,
-      customerId,
-      clearError,
-      handleError,
-    ]);
-
-  /* =======================================================
-     RESET
-     ======================================================= */
-
   const reset = useCallback(() => {
     setStatus("IDLE");
-
     setSession(null);
     setIntent(null);
     setDecision(null);
-
     setRecommendations([]);
-
     setCart(null);
     setLimits(null);
-
     setLastAction(null);
-
     setAuditTrail([]);
-
+    setAgentResult(null);
+    setAuthorization(null);
+    setConfirmationToken(null);
+    setCheckoutResult(null);
     setError(null);
-
     setIsLoading(false);
   }, []);
 
-  /* =======================================================
-     DERIVED STATE
-     ======================================================= */
-
   const canConfirm =
-    status ===
-    "AWAITING_CONFIRMATION";
+    status === "AWAITING_CONFIRMATION" &&
+    authorization !== null;
 
   const canExecute =
     status === "AUTHORIZED" &&
-    lastAction?.status ===
+    authorization?.decision ===
       "AUTHORIZED";
 
   const needsReview =
-    status ===
-    "REVIEW_REQUIRED";
+    status === "REVIEW_REQUIRED";
 
   const isBlocked =
     status === "BLOCKED";
 
   const isTerminal =
-    status ===
-      "COMPLETED" ||
+    status === "COMPLETED" ||
     status === "FAILED" ||
     status === "BLOCKED";
 
   const currentRecommendation =
-    useMemo(() => {
-      return (
-        decision?.recommendation ??
-        recommendations[0] ??
-        null
-      );
-    }, [
-      decision,
-      recommendations,
-    ]);
-
-  /* =======================================================
-     PUBLIC API
-     ======================================================= */
+    useMemo(
+      () =>
+        recommendations[0] ?? null,
+      [recommendations]
+    );
 
   return {
-    // state
     status,
     session,
     intent,
@@ -795,37 +692,178 @@ export function useAgent({
     limits,
     lastAction,
     auditTrail,
-
-    // loading / error
+    agentResult,
+    authorization,
+    confirmationToken,
+    checkoutResult,
     isLoading,
     error,
-
-    // derived state
     canConfirm,
     canExecute,
     needsReview,
     isBlocked,
     isTerminal,
-
-    // operations
     startSession,
-    refreshSession,
     sendMessage,
-
+    authorizeCheckout,
     confirmAction,
-    executeAuthorizedAction,
-
+    executeCheckout,
     loadCart,
     addProduct,
-
     loadSpendingLimits,
     loadAuditTrail,
-
-    createCheckout,
-
     clearError,
     reset,
   };
+}
+
+function buildCart(
+  sessionId: string,
+  result: BackendAgentResult
+): Cart {
+  const items = [
+    ...result.recommendations
+      .slice(0, 1)
+      .map((item) => ({
+        productId: item.product_id,
+        productName:
+          item.product_name,
+        quantity: 1,
+        unitPrice: item.price,
+        totalPrice: item.price,
+      })),
+    ...(result.cross_sell
+      ? [
+          {
+            productId:
+              result.cross_sell
+                .product_id,
+            productName:
+              result.cross_sell
+                .product_name,
+            quantity: 1,
+            unitPrice:
+              result.cross_sell.price,
+            totalPrice:
+              result.cross_sell.price,
+          },
+        ]
+      : []),
+  ];
+
+  const subtotal = items.reduce(
+    (total, item) =>
+      total + item.totalPrice,
+    0
+  );
+
+  return {
+    id: `cart-${sessionId}`,
+    sessionId,
+    items,
+    subtotal,
+    discount: 0,
+    deliveryFee: 0,
+    total: subtotal,
+    currency: "INR",
+  };
+}
+
+function buildReasoning(
+  result: BackendAgentResult
+) {
+  const primary =
+    result.recommendations[0];
+
+  if (!primary) {
+    return result.message;
+  }
+
+  const reasons =
+    primary.reasons.join(", ");
+
+  if (result.cross_sell) {
+    return `${primary.product_name} was selected because ${reasons}. ${result.cross_sell.product_name} is added as a cross-sell with ${Math.round(
+      result.cross_sell.confidence * 100
+    )}% affinity from historical product relationships.`;
+  }
+
+  return `${primary.product_name} was selected because ${reasons}.`;
+}
+
+function buildGuardrails(
+  authorization: CheckoutAuthorizationResult
+): AgentDecision["guardrails"] {
+  if (
+    authorization.decision === "BLOCKED"
+  ) {
+    return [
+      {
+        id: "merchant-policy",
+        name: authorization.reason,
+        status: "BLOCKED",
+      },
+    ];
+  }
+
+  return [
+    {
+      id: "signature",
+      name:
+        "Signed intent created and verified",
+      status: "PASS",
+    },
+    {
+      id: "policy",
+      name:
+        authorization.reason,
+      status:
+        authorization.decision ===
+        "REVIEW"
+          ? "REVIEW_REQUIRED"
+          : "PASS",
+    },
+    {
+      id: "human-gate",
+      name:
+        authorization.requires_confirmation
+          ? "Customer confirmation required before execution"
+          : "Amount is within no-confirmation policy limit",
+      status:
+        authorization.requires_confirmation
+          ? "REVIEW_REQUIRED"
+          : "PASS",
+    },
+  ];
+}
+
+function getCheckoutProductIds(
+  result: BackendAgentResult
+) {
+  const ids = result.recommendations
+    .slice(0, 1)
+    .map((item) => item.product_id);
+
+  if (result.cross_sell) {
+    ids.push(
+      result.cross_sell.product_id
+    );
+  }
+
+  return ids;
+}
+
+function extractConfirmationToken(
+  status: unknown
+) {
+  const value = String(status || "");
+  const separator = value.indexOf(":");
+
+  if (separator === -1) {
+    return null;
+  }
+
+  return value.slice(separator + 1);
 }
 
 export default useAgent;
