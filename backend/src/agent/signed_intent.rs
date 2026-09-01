@@ -27,9 +27,42 @@ pub struct SignedAgentIntent {
     pub signature: String,
 }
 
+#[derive(Serialize)]
+struct CanonicalAgentIntentPayload<'a> {
+    intent_id: Uuid,
+    session_id: Uuid,
+    action: &'a str,
+    amount: i64,
+    currency: &'a str,
+    category: &'a str,
+    product_ids: &'a [Uuid],
+    requires_confirmation: bool,
+    nonce: Uuid,
+    issued_at_micros: i64,
+    expires_at_micros: i64,
+}
+
 impl AgentIntentPayload {
     pub fn canonical_bytes(&self) -> Result<Vec<u8>, serde_json::Error> {
-        serde_json::to_vec(self)
+        let canonical =
+            CanonicalAgentIntentPayload {
+                intent_id: self.intent_id,
+                session_id: self.session_id,
+                action: &self.action,
+                amount: self.amount,
+                currency: &self.currency,
+                category: &self.category,
+                product_ids: &self.product_ids,
+                requires_confirmation:
+                    self.requires_confirmation,
+                nonce: self.nonce,
+                issued_at_micros:
+                    self.issued_at.timestamp_micros(),
+                expires_at_micros:
+                    self.expires_at.timestamp_micros(),
+            };
+
+        serde_json::to_vec(&canonical)
     }
 }
 
@@ -239,6 +272,42 @@ mod tests {
                 &intent
             )
             .is_err()
+        );
+    }
+
+    #[test]
+    fn verifies_after_database_timestamp_precision_roundtrip() {
+        let mut intent =
+            create_signed_intent(
+                SECRET,
+                Uuid::new_v4(),
+                "CREATE_ORDER",
+                1299,
+                "INR",
+                "Running",
+                vec![Uuid::new_v4()],
+                false,
+            )
+            .unwrap();
+
+        intent.payload.issued_at =
+            DateTime::<Utc>::from_timestamp_micros(
+                intent.payload.issued_at.timestamp_micros(),
+            )
+            .unwrap();
+
+        intent.payload.expires_at =
+            DateTime::<Utc>::from_timestamp_micros(
+                intent.payload.expires_at.timestamp_micros(),
+            )
+            .unwrap();
+
+        assert!(
+            verify_signed_intent(
+                SECRET,
+                &intent
+            )
+            .is_ok()
         );
     }
 

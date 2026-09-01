@@ -13,6 +13,7 @@ import "../styles/Agent.css";
 import AgentActivity from "../components/AgentActivity";
 import AuditTrail from "../components/AuditTrail";
 import ChatPanel from "../components/ChatPanel";
+import RecommendationCard from "../components/RecommendationCard";
 
 import {
   useAgentContext,
@@ -26,6 +27,8 @@ function AgentContent() {
   const {
     status,
     decision,
+    currentRecommendation,
+    agentResult,
     cart,
     authorization,
     checkoutResult,
@@ -149,6 +152,48 @@ function AgentContent() {
               </p>
             </div>
           </div>
+
+          {currentRecommendation && (
+            <div className="agent-recommendation-section">
+              <RecommendationCard
+                recommendation={{
+                  productName:
+                    currentRecommendation.product.name,
+                  description:
+                    currentRecommendation.product.description,
+                  price:
+                    currentRecommendation.product.price,
+                  rating:
+                    currentRecommendation.product.rating ||
+                    4.7,
+                  reviews:
+                    currentRecommendation.product.reviewCount
+                      ? `${currentRecommendation.product.reviewCount}`
+                      : "catalog",
+                  matchScore: Math.round(
+                    currentRecommendation.matchScore
+                  ),
+                  reason:
+                    currentRecommendation.reason,
+                  expectedAOV:
+                    cart?.total ||
+                    currentRecommendation.product.price,
+                  tag: "AI PICK",
+                  crossSell:
+                    agentResult?.cross_sell
+                      ? {
+                          name:
+                            agentResult.cross_sell.product_name,
+                          price:
+                            agentResult.cross_sell.price,
+                          reason:
+                            "Bundled from backend product-affinity signals.",
+                        }
+                      : undefined,
+                }}
+              />
+            </div>
+          )}
 
           <AgentActivity />
 

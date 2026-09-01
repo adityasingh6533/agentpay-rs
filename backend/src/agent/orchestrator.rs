@@ -34,12 +34,21 @@ impl AgentOrchestrator {
             return Err(AppError::Validation("message cannot be empty".into()));
         }
 
-        let intent = self.extract_intent(message).await?;
+        let intent = normalize_intent(self.extract_intent(message).await?, message);
 
-        let products =
+        let mut products =
             catalog::search(&self.db, intent.category.as_deref(), intent.max_price).await?;
 
-        let ranked = catalog::rank_products(products, intent.category.as_deref(), intent.max_price);
+        if products.is_empty() && intent.category.is_some() {
+            products = catalog::search(&self.db, None, intent.max_price).await?;
+        }
+
+        let ranked = catalog::rank_products(
+            products,
+            intent.category.as_deref(),
+            intent.max_price,
+            &intent.keywords,
+        );
 
         let recommendations = ranked
             .iter()
@@ -271,6 +280,55 @@ fn extract_demo_intent(message: &str) -> CustomerIntent {
         wants_recommendation: true,
         confidence: 0.75,
     }
+}
+
+fn normalize_intent(mut intent: CustomerIntent, message: &str) -> CustomerIntent {
+    let combined = format!(
+        "{} {} {}",
+        message,
+        intent.category.as_deref().unwrap_or_default(),
+        intent.keywords.join(" ")
+    )
+    .to_lowercase();
+
+    intent.category = if combined.contains("sock") || combined.contains("accessor") {
+        Some("Accessories".to_string())
+    } else if combined.contains("jacket")
+        || combined.contains("short")
+        || combined.contains("tee")
+        || combined.contains("t-shirt")
+        || combined.contains("sportswear")
+        || combined.contains("apparel")
+    {
+        Some("Sportswear".to_string())
+    } else if combined.contains("shoe")
+        || combined.contains("sneaker")
+        || combined.contains("runner")
+        || combined.contains("running")
+    {
+        Some("Running".to_string())
+    } else {
+        intent.category
+    };
+
+    if intent.keywords.is_empty() {
+        intent.keywords = message
+            .to_lowercase()
+            .split(|character: char| !character.is_ascii_alphanumeric())
+            .filter(|part| part.len() > 2)
+            .map(ToString::to_string)
+            .collect();
+    }
+
+    if !intent.wants_recommendation {
+        intent.wants_recommendation = combined.contains("need")
+            || combined.contains("want")
+            || combined.contains("buy")
+            || combined.contains("recommend")
+            || intent.category.is_some();
+    }
+
+    intent
 }
 
 #[derive(Debug, Serialize)]

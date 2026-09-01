@@ -1022,3 +1022,84 @@
   opacity: .35;
   cursor: not-allowed;
 }
+
+.chat-stage-strip {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 1px;
+  padding: 8px 14px;
+  border-bottom: 1px solid #20232c;
+  background: #0d0e13;
+}
+
+.chat-stage {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 6px 5px;
+  border: 1px solid #20232c;
+  border-radius: 5px;
+  color: #676b78;
+  background: #111219;
+  font-size: 8px;
+  font-weight: 750;
+}
+
+.chat-stage span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #383c47;
+}
+
+.chat-stage.active {
+  color: #72d6a3;
+  border-color: rgba(78, 211, 154, 0.18);
+  background: rgba(78, 211, 154, 0.04);
+}
+
+.chat-stage.active span {
+  background: #4ed39a;
+}
+
+.chat-recommendation.cross-sell {
+  border-color: rgba(78, 211, 154, 0.16);
+  background: rgba(78, 211, 154, 0.035);
+}
+
+.chat-recommendation.cross-sell .chat-recommendation-icon {
+  color: #4ed39a;
+  background: rgba(78, 211, 154, 0.08);
+}
+
+.chat-action-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chat-action-row input {
+  min-width: 0;
+  flex: 1;
+}
+
+.chat-policy-reason {
+  margin: 8px 0 0;
+  color: #777b87;
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+@media (max-width: 720px) {
+  .chat-stage-strip {
+    grid-template-columns: 1fr;
+  }
+
+  .chat-action-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

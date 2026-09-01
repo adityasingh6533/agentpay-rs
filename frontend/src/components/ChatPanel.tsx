@@ -2,16 +2,18 @@ import {
   Bot,
   Check,
   Clock3,
+  CreditCard,
   MessageSquare,
+  Package,
   Send,
   ShieldAlert,
   Sparkles,
   User,
   XCircle,
 } from "lucide-react";
-
 import {
   FormEvent,
+  ReactNode,
   useEffect,
   useState,
 } from "react";
@@ -22,6 +24,29 @@ import {
   useAgentContext,
 } from "../context/AgentContext";
 
+const demoPrompts = [
+  {
+    label: "Running bundle",
+    prompt: "I need running shoes under 1500",
+  },
+  {
+    label: "Confirmation gate",
+    prompt: "I need a sports jacket under 2000",
+  },
+  {
+    label: "Shorts",
+    prompt: "Show me breathable sports shorts under 1000",
+  },
+  {
+    label: "Socks",
+    prompt: "Find running socks under 300",
+  },
+  {
+    label: "Tee",
+    prompt: "Recommend a performance tee under 800",
+  },
+];
+
 function ChatPanel() {
   const {
     status,
@@ -29,20 +54,16 @@ function ChatPanel() {
     auditTrail,
     isLoading,
     error,
-
     canConfirm,
     needsReview,
     isBlocked,
-
     agentResult,
     authorization,
     checkoutResult,
-
     sendMessage,
     authorizeCheckout,
     confirmAction,
     executeCheckout,
-
     loadAuditTrail,
     clearError,
   } = useAgentContext();
@@ -53,10 +74,8 @@ function ChatPanel() {
     submittedMessage,
     setSubmittedMessage,
   ] = useState("");
-
   const [hasStarted, setHasStarted] =
     useState(false);
-
   const [
     merchantId,
     setMerchantId,
@@ -77,89 +96,10 @@ function ChatPanel() {
     loadAuditTrail,
   ]);
 
-  /* =========================================================
-     SEND MESSAGE
-     ========================================================= */
-
-  const handleSubmit = async (
-    event: FormEvent
-  ) => {
-    event.preventDefault();
-
-    const trimmed =
-      message.trim();
-
-    if (
-      !trimmed ||
-      isLoading
-    ) {
-      return;
-    }
-
-    clearError();
-
-    setHasStarted(true);
-    setSubmittedMessage(trimmed);
-    setMessage("");
-
-    await sendMessage(
-      trimmed
-    );
-  };
-
-  /* =========================================================
-     AUTHORIZE
-     ========================================================= */
-
-  const handleAuthorize =
-    async () => {
-      if (!merchantId.trim()) {
-        clearError();
-
-        /*
-         * We deliberately don't invent
-         * a merchant UUID.
-         */
-        window.alert(
-          "Merchant ID is required for secure checkout authorization."
-        );
-
-        return;
-      }
-
-      await authorizeCheckout(
-        merchantId.trim()
-      );
-
-      await loadAuditTrail();
-    };
-
-  /* =========================================================
-     CONFIRM
-     ========================================================= */
-
-  const handleConfirm =
-    async () => {
-      await confirmAction();
-
-      await loadAuditTrail();
-    };
-
-  /* =========================================================
-     EXECUTE
-     ========================================================= */
-
-  const handleExecute =
-    async () => {
-      await executeCheckout();
-
-      await loadAuditTrail();
-    };
-
-  const runPrompt = async (
+  const submitPrompt = async (
     prompt: string
   ) => {
-    if (isLoading) {
+    if (!prompt.trim() || isLoading) {
       return;
     }
 
@@ -171,43 +111,67 @@ function ChatPanel() {
     await sendMessage(prompt);
   };
 
+  const handleSubmit = async (
+    event: FormEvent
+  ) => {
+    event.preventDefault();
+    await submitPrompt(message.trim());
+  };
+
+  const handleAuthorize =
+    async () => {
+      if (!merchantId.trim()) {
+        window.alert(
+          "Merchant ID is required for checkout authorization."
+        );
+        return;
+      }
+
+      await authorizeCheckout(
+        merchantId.trim()
+      );
+      await loadAuditTrail();
+    };
+
+  const handleConfirm =
+    async () => {
+      await confirmAction();
+      await loadAuditTrail();
+    };
+
+  const handleExecute =
+    async () => {
+      await executeCheckout();
+      await loadAuditTrail();
+    };
+
   return (
     <div className="chat-panel">
-
-      {/* HEADER */}
-
       <div className="chat-panel-header">
-
         <div>
-
           <span className="chat-section-label">
             CUSTOMER SESSION
           </span>
 
           <div className="chat-session-title">
-
             <div className="chat-user-icon">
               <User size={16} />
             </div>
 
             <div>
-
               <strong>
                 Agent Commerce Session
               </strong>
 
               <span>
-                Autonomous shopping assistant
+                Ask, recommend, authorize,
+                confirm, create order
               </span>
-
             </div>
-
           </div>
-
         </div>
 
         <div className="chat-session-status">
-
           <span
             className={
               status === "FAILED" ||
@@ -216,746 +180,577 @@ function ChatPanel() {
                 : "status-dot"
             }
           />
-
-          {formatStatus(
-            status
-          )}
-
+          {formatStatus(status)}
         </div>
-
       </div>
 
-      {/* MESSAGES */}
+      <div className="chat-stage-strip">
+        <Stage
+          label="Ask"
+          active={hasStarted}
+        />
+        <Stage
+          label="Recommend"
+          active={Boolean(agentResult)}
+        />
+        <Stage
+          label="Authorize"
+          active={Boolean(authorization)}
+        />
+        <Stage
+          label="Confirm"
+          active={
+            status ===
+              "AWAITING_CONFIRMATION" ||
+            authorization?.decision ===
+              "AUTHORIZED"
+          }
+        />
+        <Stage
+          label="Order"
+          active={Boolean(checkoutResult)}
+        />
+      </div>
 
       <div className="chat-messages">
-
         {!hasStarted && (
           <div className="chat-empty-state">
-
             <div className="chat-empty-icon">
               <Bot size={24} />
             </div>
 
             <strong>
-              AgentPay Commerce Agent
+              Start a judge-ready flow
             </strong>
 
             <p>
-              Tell the agent what the customer
-              wants. It will understand the request,
-              search the merchant catalog and return
-              a recommendation before any financial
-              action is attempted.
+              Pick one request. The agent will
+              search the backend catalog, choose a
+              product, add a growth cross-sell when
+              available, and wait for authorization
+              before checkout.
             </p>
 
             <div className="chat-capabilities">
-
               <Capability
-                icon={
-                  <Sparkles size={11} />
-                }
-                text="Intent understanding"
+                icon={<Sparkles size={11} />}
+                text="Catalog intelligence"
               />
-
               <Capability
-                icon={
-                  <ShieldAlert size={11} />
-                }
-                text="Policy enforcement"
+                icon={<ShieldAlert size={11} />}
+                text="Bounded money action"
               />
-
               <Capability
-                icon={
-                  <Clock3 size={11} />
-                }
-                text="Auditable decisions"
+                icon={<Clock3 size={11} />}
+                text="Visible audit trail"
               />
-
             </div>
 
             <div className="chat-demo-prompts">
-              <button
-                type="button"
-                onClick={() =>
-                  runPrompt(
-                    "I need running shoes under 1500"
-                  )
-                }
-              >
-                Running bundle
-              </button>
-
-              <button
-                type="button"
-                onClick={() =>
-                  runPrompt(
-                    "I need a sports jacket under 2000"
-                  )
-                }
-              >
-                Confirmation gate
-              </button>
+              {demoPrompts.map((item) => (
+                <button
+                  key={item.label}
+                  type="button"
+                  onClick={() =>
+                    submitPrompt(item.prompt)
+                  }
+                >
+                  {item.label}
+                </button>
+              ))}
             </div>
-
           </div>
         )}
 
         {hasStarted && (
-          <div className="chat-message customer">
-
-            <div className="chat-message-avatar customer">
-              <User size={13} />
-            </div>
-
-            <div className="chat-message-body">
-
-              <span>
-                CUSTOMER
-              </span>
-
-              <div className="chat-bubble customer">
-                {submittedMessage ||
-                  "Customer request submitted"}
-              </div>
-
-            </div>
-
-          </div>
+          <ChatBlock
+            type="customer"
+            label="CUSTOMER"
+            icon={<User size={13} />}
+          >
+            {submittedMessage}
+          </ChatBlock>
         )}
 
         {isLoading && (
-          <div className="chat-message agent">
+          <ChatBlock
+            type="agent"
+            label="AGENTPAY AI"
+            icon={<Bot size={13} />}
+          >
+            <div className="processing-dots">
+              <span />
+              <span />
+              <span />
+            </div>
+            <strong>{formatStatus(status)}</strong>
+          </ChatBlock>
+        )}
 
+        {!isLoading && agentResult && (
+          <div className="chat-agent-result">
             <div className="chat-message-avatar agent">
               <Bot size={13} />
             </div>
 
-            <div className="chat-message-body">
+            <div className="chat-agent-result-body">
+              <span>AGENTPAY AI</span>
 
-              <span>
-                AGENTPAY AI
-              </span>
-
-              <div className="chat-bubble agent processing">
-
-                <div className="processing-dots">
-                  <span />
-                  <span />
-                  <span />
-                </div>
-
+              <div className="chat-bubble agent">
                 <strong>
-                  {formatStatus(
-                    status
-                  )}
+                  Agent analysis complete
                 </strong>
 
+                <p>{agentResult.message}</p>
+
+                <small>
+                  Intent:{" "}
+                  {agentResult.intent.category ||
+                    "General"}{" "}
+                  · confidence{" "}
+                  {Math.round(
+                    agentResult.intent.confidence *
+                      100
+                  )}
+                  %
+                </small>
               </div>
 
-            </div>
+              {currentRecommendation && (
+                <div className="chat-recommendation">
+                  <div className="chat-recommendation-icon">
+                    <Package size={14} />
+                  </div>
 
+                  <div className="chat-recommendation-info">
+                    <span>
+                      PRIMARY PRODUCT
+                    </span>
+
+                    <strong>
+                      {
+                        currentRecommendation
+                          .product.name
+                      }
+                    </strong>
+
+                    <p>
+                      {
+                        currentRecommendation.reason
+                      }
+                    </p>
+                  </div>
+
+                  <div className="chat-recommendation-score">
+                    <strong>
+                      {Math.round(
+                        currentRecommendation.matchScore
+                      )}
+                      %
+                    </strong>
+                    <span>MATCH</span>
+                  </div>
+                </div>
+              )}
+
+              {agentResult.cross_sell && (
+                <div className="chat-recommendation cross-sell">
+                  <div className="chat-recommendation-icon">
+                    <Sparkles size={14} />
+                  </div>
+
+                  <div className="chat-recommendation-info">
+                    <span>
+                      GROWTH CROSS-SELL
+                    </span>
+
+                    <strong>
+                      {
+                        agentResult.cross_sell
+                          .product_name
+                      }
+                    </strong>
+
+                    <p>
+                      {formatCurrency(
+                        agentResult.cross_sell.price
+                      )}
+                      {" · "}
+                      {Math.round(
+                        agentResult.cross_sell
+                          .confidence * 100
+                      )}
+                      % affinity
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {!authorization && (
+                <div className="chat-confirmation">
+                  <div>
+                    <strong>
+                      Authorization required
+                    </strong>
+                    <p>
+                      Checkout is locked until the
+                      backend policy and signed
+                      intent checks pass.
+                    </p>
+                  </div>
+
+                  <div className="chat-action-row">
+                    <input
+                      value={merchantId}
+                      onChange={(event) =>
+                        setMerchantId(
+                          event.target.value
+                        )
+                      }
+                      placeholder="Merchant ID"
+                    />
+
+                    <button
+                      onClick={handleAuthorize}
+                      disabled={
+                        isLoading ||
+                        !merchantId.trim()
+                      }
+                    >
+                      <ShieldAlert size={13} />
+                      Authorize
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {authorization && (
+                <div className="chat-policy">
+                  <div className="chat-policy-title">
+                    <ShieldAlert size={12} />
+                    <span>
+                      AUTHORIZATION RESULT
+                    </span>
+                  </div>
+
+                  <div className="chat-policy-list">
+                    <PolicyItem
+                      label="Decision"
+                      value={
+                        authorization.decision
+                      }
+                    />
+                    <PolicyItem
+                      label="Amount"
+                      value={formatCurrency(
+                        authorization.amount
+                      )}
+                    />
+                    <PolicyItem
+                      label="Confirmation"
+                      value={
+                        authorization.requires_confirmation
+                          ? "Required"
+                          : "Not required"
+                      }
+                    />
+                  </div>
+
+                  <p className="chat-policy-reason">
+                    {authorization.reason}
+                  </p>
+                </div>
+              )}
+
+              {canConfirm && (
+                <ActionPanel
+                  title="Customer confirmation required"
+                  copy="The agent cannot execute payment until the customer approves this specific signed intent."
+                  button="Confirm action"
+                  icon={<Check size={13} />}
+                  onClick={handleConfirm}
+                  disabled={isLoading}
+                />
+              )}
+
+              {authorization?.decision ===
+                "AUTHORIZED" &&
+                status === "AUTHORIZED" && (
+                <ActionPanel
+                  title="Ready to create Razorpay order"
+                  copy="The backend has verified the signed intent. This button creates the test-mode Razorpay order."
+                  button="Create Razorpay order"
+                  icon={
+                    <CreditCard size={13} />
+                  }
+                  onClick={handleExecute}
+                  disabled={isLoading}
+                />
+              )}
+
+              {checkoutResult && (
+                <div className="chat-policy">
+                  <div className="chat-policy-title">
+                    <Check size={12} />
+                    <span>
+                      RAZORPAY ORDER CREATED
+                    </span>
+                  </div>
+
+                  <div className="chat-policy-list">
+                    <PolicyItem
+                      label="Status"
+                      value={
+                        checkoutResult.status
+                      }
+                    />
+                    <PolicyItem
+                      label="Order"
+                      value={
+                        checkoutResult.razorpay_order_id ||
+                        "Pending"
+                      }
+                    />
+                  </div>
+
+                  <p className="chat-policy-reason">
+                    {checkoutResult.message}
+                  </p>
+                </div>
+              )}
+
+              {needsReview && (
+                <StateNotice
+                  tone="review"
+                  title="Human review required"
+                  copy="The policy engine requires review. No money has moved."
+                />
+              )}
+
+              {isBlocked && (
+                <StateNotice
+                  tone="blocked"
+                  title="Action blocked"
+                  copy="The backend refused the financial action. No payment should be executed."
+                />
+              )}
+            </div>
           </div>
         )}
 
-        {!isLoading &&
-          agentResult && (
-            <div className="chat-agent-result">
-
-              <div className="chat-message-avatar agent">
-                <Bot size={13} />
-              </div>
-
-              <div className="chat-agent-result-body">
-
-                <span>
-                  AGENTPAY AI
-                </span>
-
-                {/* AGENT RESPONSE */}
-
-                <div className="chat-bubble agent">
-
-                  <strong>
-                    Agent analysis complete.
-                  </strong>
-
-                  <p>
-                    {agentResult.message}
-                  </p>
-
-                  <small>
-                    Intent confidence:{" "}
-                    {Math.round(
-                      agentResult.intent
-                        .confidence *
-                        100
-                    )}
-                    %
-                  </small>
-
-                </div>
-
-                {/* RECOMMENDATION */}
-
-                {currentRecommendation && (
-                  <div className="chat-recommendation">
-
-                    <div className="chat-recommendation-icon">
-                      <Sparkles size={14} />
-                    </div>
-
-                    <div className="chat-recommendation-info">
-
-                      <span>
-                        AI RECOMMENDATION
-                      </span>
-
-                      <strong>
-                        {
-                          currentRecommendation
-                            .product
-                            .name
-                        }
-                      </strong>
-
-                      <p>
-                        {
-                          currentRecommendation
-                            .reason
-                        }
-                      </p>
-
-                    </div>
-
-                    <div className="chat-recommendation-score">
-
-                      <strong>
-                        {Math.round(
-                          currentRecommendation
-                            .matchScore
-                        )}
-                        %
-                      </strong>
-
-                      <span>
-                        MATCH
-                      </span>
-
-                    </div>
-
-                  </div>
-                )}
-
-                {/* CROSS SELL */}
-
-                {agentResult.cross_sell && (
-                  <div className="chat-recommendation">
-
-                    <div className="chat-recommendation-icon">
-                      <Sparkles size={14} />
-                    </div>
-
-                    <div className="chat-recommendation-info">
-
-                      <span>
-                        AI CROSS-SELL
-                      </span>
-
-                      <strong>
-                        {
-                          agentResult
-                            .cross_sell
-                            .product_name
-                        }
-                      </strong>
-
-                      <p>
-                        ₹
-                        {
-                          agentResult
-                            .cross_sell
-                            .price
-                        }
-                        {" · "}
-                        {Math.round(
-                          agentResult
-                            .cross_sell
-                            .confidence *
-                            100
-                        )}
-                        % confidence
-                      </p>
-
-                    </div>
-
-                  </div>
-                )}
-
-                {/* MERCHANT ID */}
-
-                {agentResult &&
-                  !authorization && (
-                    <div className="chat-confirmation">
-
-                      <div>
-
-                        <strong>
-                          Secure checkout authorization
-                        </strong>
-
-                        <p>
-                          The agent recommendation is
-                          not a payment authorization.
-                          Enter the merchant ID to run
-                          the backend policy and signed
-                          intent checks.
-                        </p>
-
-                      </div>
-
-                      <div
-                        style={{
-                          display:
-                            "flex",
-                          gap: "8px",
-                          width:
-                            "100%",
-                        }}
-                      >
-
-                        <input
-                          value={
-                            merchantId
-                          }
-                          onChange={(
-                            event
-                          ) =>
-                            setMerchantId(
-                              event
-                                .target
-                                .value
-                            )
-                          }
-                          placeholder="Merchant ID"
-                        />
-
-                        <button
-                          onClick={
-                            handleAuthorize
-                          }
-                          disabled={
-                            isLoading ||
-                            !merchantId.trim()
-                          }
-                        >
-                          <ShieldAlert
-                            size={13}
-                          />
-
-                          Authorize
-                        </button>
-
-                      </div>
-
-                    </div>
-                  )}
-
-                {/* AUTHORIZATION RESULT */}
-
-                {authorization && (
-                  <div className="chat-policy">
-
-                    <div className="chat-policy-title">
-
-                      <ShieldAlert size={12} />
-
-                      <span>
-                        AUTHORIZATION RESULT
-                      </span>
-
-                    </div>
-
-                    <div className="chat-policy-list">
-
-                      <div className="chat-policy-item">
-
-                        <Check size={10} />
-
-                        <span>
-                          Decision
-                        </span>
-
-                        <strong>
-                          {
-                            authorization
-                              .decision
-                          }
-                        </strong>
-
-                      </div>
-
-                      <div className="chat-policy-item">
-
-                        <Check size={10} />
-
-                        <span>
-                          Intent
-                        </span>
-
-                        <strong>
-                          {
-                            authorization
-                              .intent_id
-                          }
-                        </strong>
-
-                      </div>
-
-                    </div>
-
-                    <p
-                      style={{
-                        marginTop:
-                          "8px",
-                      }}
-                    >
-                      {
-                        authorization.reason
-                      }
-                    </p>
-
-                  </div>
-                )}
-
-                {/* CONFIRMATION */}
-
-                {canConfirm && (
-                  <div className="chat-confirmation">
-
-                    <div>
-
-                      <strong>
-                        Customer confirmation required
-                      </strong>
-
-                      <p>
-                        The agent cannot proceed
-                        without explicit customer
-                        confirmation.
-                      </p>
-
-                    </div>
-
-                    <button
-                      onClick={
-                        handleConfirm
-                      }
-                      disabled={
-                        isLoading
-                      }
-                    >
-
-                      <Check size={13} />
-
-                      Confirm action
-
-                    </button>
-
-                  </div>
-                )}
-
-                {/* EXECUTION */}
-
-                {authorization?.decision ===
-                  "AUTHORIZED" &&
-                  status ===
-                    "AUTHORIZED" && (
-                    <div className="chat-confirmation">
-
-                      <div>
-
-                        <strong>
-                          Authorization verified
-                        </strong>
-
-                        <p>
-                          The signed intent has
-                          passed the authorization
-                          boundary. Execute only after
-                          confirmation requirements
-                          are satisfied.
-                        </p>
-
-                      </div>
-
-                      <button
-                        onClick={
-                          handleExecute
-                        }
-                        disabled={
-                          isLoading
-                        }
-                      >
-
-                        <Check size={13} />
-
-                        Create Razorpay Order
-
-                      </button>
-
-                    </div>
-                  )}
-
-                {checkoutResult && (
-                  <div className="chat-policy">
-
-                    <div className="chat-policy-title">
-
-                      <Check size={12} />
-
-                      <span>
-                        RAZORPAY ORDER CREATED
-                      </span>
-
-                    </div>
-
-                    <div className="chat-policy-list">
-
-                      <div className="chat-policy-item">
-
-                        <Check size={10} />
-
-                        <span>
-                          Status
-                        </span>
-
-                        <strong>
-                          {
-                            checkoutResult
-                              .status
-                          }
-                        </strong>
-
-                      </div>
-
-                      <div className="chat-policy-item">
-
-                        <Check size={10} />
-
-                        <span>
-                          Order
-                        </span>
-
-                        <strong>
-                          {
-                            checkoutResult
-                              .razorpay_order_id ||
-                            "Pending"
-                          }
-                        </strong>
-
-                      </div>
-
-                    </div>
-
-                    <p
-                      style={{
-                        marginTop:
-                          "8px",
-                      }}
-                    >
-                      {
-                        checkoutResult.message
-                      }
-                    </p>
-
-                  </div>
-                )}
-
-                {/* REVIEW */}
-
-                {needsReview && (
-                  <div className="chat-review-state">
-
-                    <ShieldAlert size={15} />
-
-                    <div>
-
-                      <strong>
-                        Human review required
-                      </strong>
-
-                      <p>
-                        The policy engine detected
-                        a condition requiring review.
-                        No transaction has been executed.
-                      </p>
-
-                    </div>
-
-                  </div>
-                )}
-
-                {/* BLOCKED */}
-
-                {isBlocked && (
-                  <div className="chat-blocked-state">
-
-                    <XCircle size={15} />
-
-                    <div>
-
-                      <strong>
-                        Action blocked
-                      </strong>
-
-                      <p>
-                        The backend policy engine
-                        refused the financial action.
-                        No payment should be executed.
-                      </p>
-
-                    </div>
-
-                  </div>
-                )}
-
-              </div>
-
-            </div>
-          )}
-
-        {/* ERROR */}
-
         {error && (
           <div className="chat-error">
-
             <XCircle size={14} />
 
             <div>
-
-              <strong>
-                Agent error
-              </strong>
-
-              <p>
-                {error.message}
-              </p>
-
+              <strong>Agent error</strong>
+              <p>{error.message}</p>
             </div>
 
-            <button
-              onClick={
-                clearError
-              }
-            >
+            <button onClick={clearError}>
               <XCircle size={12} />
             </button>
-
           </div>
         )}
 
         {auditTrail.length > 0 && (
           <div className="chat-audit-summary">
-
             <Check size={11} />
-
             <span>
-              {auditTrail.length} auditable
-              agent events recorded
+              {auditTrail.length} backend audit
+              events recorded
             </span>
-
           </div>
         )}
-
       </div>
-
-      {/* INPUT */}
 
       <form
         className="chat-input"
-        onSubmit={
-          handleSubmit
-        }
+        onSubmit={handleSubmit}
       >
-
         <MessageSquare size={16} />
 
         <input
           value={message}
           onChange={(event) =>
-            setMessage(
-              event.target.value
-            )
+            setMessage(event.target.value)
           }
           placeholder={
             isLoading
               ? "Agent is processing..."
-              : "Tell the agent what the customer needs..."
+              : "Example: Find sports shorts under 1000"
           }
-          disabled={
-            isLoading
-          }
+          disabled={isLoading}
         />
 
         <button
           type="submit"
           disabled={
-            isLoading ||
-            !message.trim()
+            isLoading || !message.trim()
           }
         >
           <Send size={15} />
         </button>
-
       </form>
-
     </div>
   );
 }
 
-/* =========================================================
-   CAPABILITY
-   ========================================================= */
+function ChatBlock({
+  type,
+  label,
+  icon,
+  children,
+}: {
+  type: "agent" | "customer";
+  label: string;
+  icon: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div className={`chat-message ${type}`}>
+      <div
+        className={`chat-message-avatar ${type}`}
+      >
+        {icon}
+      </div>
+
+      <div className="chat-message-body">
+        <span>{label}</span>
+        <div className={`chat-bubble ${type}`}>
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function Capability({
   icon,
   text,
 }: {
-  icon: React.ReactNode;
+  icon: ReactNode;
   text: string;
 }) {
   return (
     <div className="chat-capability">
-
       {icon}
-
-      <span>
-        {text}
-      </span>
-
+      <span>{text}</span>
     </div>
   );
 }
 
-/* =========================================================
-   STATUS
-   ========================================================= */
+function Stage({
+  label,
+  active,
+}: {
+  label: string;
+  active: boolean;
+}) {
+  return (
+    <div
+      className={
+        active
+          ? "chat-stage active"
+          : "chat-stage"
+      }
+    >
+      <span />
+      {label}
+    </div>
+  );
+}
 
-function formatStatus(
-  status: string
-) {
+function PolicyItem({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="chat-policy-item">
+      <Check size={10} />
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function ActionPanel({
+  title,
+  copy,
+  button,
+  icon,
+  onClick,
+  disabled,
+}: {
+  title: string;
+  copy: string;
+  button: string;
+  icon: ReactNode;
+  onClick: () => void;
+  disabled: boolean;
+}) {
+  return (
+    <div className="chat-confirmation">
+      <div>
+        <strong>{title}</strong>
+        <p>{copy}</p>
+      </div>
+
+      <button
+        onClick={onClick}
+        disabled={disabled}
+      >
+        {icon}
+        {button}
+      </button>
+    </div>
+  );
+}
+
+function StateNotice({
+  tone,
+  title,
+  copy,
+}: {
+  tone: "review" | "blocked";
+  title: string;
+  copy: string;
+}) {
+  return (
+    <div
+      className={
+        tone === "review"
+          ? "chat-review-state"
+          : "chat-blocked-state"
+      }
+    >
+      <ShieldAlert size={15} />
+      <div>
+        <strong>{title}</strong>
+        <p>{copy}</p>
+      </div>
+    </div>
+  );
+}
+
+function formatStatus(status: string) {
   return status
-    .replaceAll(
-      "_",
-      " "
-    )
+    .replaceAll("_", " ")
     .toLowerCase()
     .replace(
       /\b\w/g,
       (letter) =>
         letter.toUpperCase()
     );
+}
+
+function formatCurrency(amount: number) {
+  return `₹${amount.toLocaleString(
+    "en-IN"
+  )}`;
 }
 
 export default ChatPanel;

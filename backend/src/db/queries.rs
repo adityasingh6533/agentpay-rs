@@ -74,6 +74,11 @@ pub async fn search_products(
     max_price: Option<i64>,
     limit: i64,
 ) -> Result<Vec<Product>, sqlx::Error> {
+    let search_pattern =
+        category.map(|value| {
+            format!("%{}%", value.trim())
+        });
+
     sqlx::query_as::<_, Product>(
         r#"
         SELECT
@@ -93,13 +98,19 @@ pub async fn search_products(
         FROM products
         WHERE active = TRUE
           AND stock > 0
-          AND ($1::text IS NULL OR category ILIKE $1)
+          AND (
+            $1::text IS NULL
+            OR category ILIKE $1
+            OR name ILIKE $1
+            OR description ILIKE $1
+            OR metadata::text ILIKE $1
+          )
           AND ($2::bigint IS NULL OR price <= $2)
         ORDER BY rating DESC NULLS LAST, review_count DESC, price ASC
         LIMIT $3
         "#,
     )
-    .bind(category)
+    .bind(search_pattern)
     .bind(max_price)
     .bind(limit)
     .fetch_all(pool)

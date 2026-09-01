@@ -27,20 +27,47 @@ pub fn rank_products(
     products: Vec<Product>,
     category: Option<&str>,
     max_price: Option<i64>,
+    keywords: &[String],
 ) -> Vec<CatalogCandidate> {
     let mut candidates = products
         .into_iter()
         .map(|product| {
             let mut score = 0.0;
             let mut reasons = Vec::new();
+            let searchable = format!(
+                "{} {} {} {}",
+                product.name,
+                product.description,
+                product.category,
+                product.metadata
+            )
+            .to_lowercase();
 
             // Category relevance
             if let Some(category) = category {
-                if product.category.eq_ignore_ascii_case(category) {
+                let category = category.to_lowercase();
+
+                if product.category.to_lowercase() == category {
                     score += 35.0;
 
                     reasons.push("category matches customer intent".to_string());
+                } else if searchable.contains(&category) {
+                    score += 22.0;
+
+                    reasons.push("product text matches customer intent".to_string());
                 }
+            }
+
+            let keyword_hits = keywords
+                .iter()
+                .filter(|keyword| keyword.len() > 2)
+                .filter(|keyword| searchable.contains(&keyword.to_lowercase()))
+                .count();
+
+            if keyword_hits > 0 {
+                score += (keyword_hits as f64 * 8.0).min(24.0);
+
+                reasons.push("matches customer keywords".to_string());
             }
 
             // Budget fit
