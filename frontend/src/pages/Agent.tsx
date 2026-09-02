@@ -116,7 +116,7 @@ function AgentContent() {
           <DemoStep
             number="4"
             title="Failure"
-            text="Ask: I need a mobile phone under 2000. Show out-of-catalog stop and audit trail."
+            text="Ask: I need a laptop under 40000. Show out-of-catalog stop and audit trail."
           />
         </div>
       </div>

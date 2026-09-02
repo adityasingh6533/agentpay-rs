@@ -30,6 +30,18 @@ const demoPrompts = [
     prompt: "I need running shoes under 1500",
   },
   {
+    label: "Yoga gear",
+    prompt: "Find yoga gear under 1200",
+  },
+  {
+    label: "Recovery kit",
+    prompt: "Recommend recovery tools under 900",
+  },
+  {
+    label: "Gym clothes",
+    prompt: "I need gym clothes under 1500",
+  },
+  {
     label: "Confirmation gate",
     prompt: "I need a sports jacket under 2000",
   },
@@ -47,7 +59,7 @@ const demoPrompts = [
   },
   {
     label: "Out of catalog",
-    prompt: "I need a mobile phone under 2000",
+    prompt: "I need a laptop under 40000",
   },
 ];
 

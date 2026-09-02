@@ -172,3 +172,86 @@ fn is_stop_word(keyword: &str) -> bool {
             | "looking"
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use chrono::Utc;
+    use serde_json::json;
+    use uuid::Uuid;
+
+    use super::rank_products;
+    use crate::models::Product;
+
+    #[test]
+    fn rejects_unrelated_products_even_when_budget_matches() {
+        let ranked = rank_products(
+            vec![product(
+                "Aero Sports Jacket",
+                "Breathable performance sports jacket",
+                "Sportswear",
+                1899,
+                &["sports", "jacket"],
+            )],
+            None,
+            Some(2000),
+            &["mobile".to_string(), "phone".to_string()],
+        );
+
+        assert!(ranked.is_empty());
+    }
+
+    #[test]
+    fn ranks_training_products_for_yoga_keywords() {
+        let ranked = rank_products(
+            vec![
+                product(
+                    "CoreBalance Yoga Mat",
+                    "Anti-slip yoga and mobility mat",
+                    "Training",
+                    999,
+                    &["yoga", "mat", "training"],
+                ),
+                product(
+                    "HydroGrip Sports Bottle",
+                    "Leak-proof hydration bottle",
+                    "Accessories",
+                    299,
+                    &["hydration", "bottle"],
+                ),
+            ],
+            Some("Training"),
+            Some(1200),
+            &["yoga".to_string(), "gear".to_string()],
+        );
+
+        assert_eq!(ranked[0].product.name, "CoreBalance Yoga Mat");
+    }
+
+    fn product(
+        name: &str,
+        description: &str,
+        category: &str,
+        price: i64,
+        tags: &[&str],
+    ) -> Product {
+        let now = Utc::now();
+
+        Product {
+            id: Uuid::new_v4(),
+            name: name.to_string(),
+            description: description.to_string(),
+            category: category.to_string(),
+            price,
+            currency: "INR".to_string(),
+            stock: 10,
+            rating: Some(4.6),
+            review_count: 100,
+            active: true,
+            metadata: json!({
+                "tags": tags,
+            }),
+            created_at: now,
+            updated_at: now,
+        }
+    }
+}

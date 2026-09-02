@@ -265,15 +265,7 @@ Confidence must be between 0 and 1.
 
 fn extract_demo_intent(message: &str) -> CustomerIntent {
     let lower = message.to_lowercase();
-    let category = if lower.contains("running") {
-        Some("Running".to_string())
-    } else if lower.contains("sportswear") || lower.contains("jacket") || lower.contains("shorts") {
-        Some("Sportswear".to_string())
-    } else if lower.contains("accessories") || lower.contains("socks") {
-        Some("Accessories".to_string())
-    } else {
-        None
-    };
+    let category = infer_category(&lower);
 
     let max_price = lower
         .split(|character: char| !character.is_ascii_digit())
@@ -301,25 +293,7 @@ fn normalize_intent(mut intent: CustomerIntent, message: &str) -> CustomerIntent
     )
     .to_lowercase();
 
-    intent.category = if combined.contains("sock") || combined.contains("accessor") {
-        Some("Accessories".to_string())
-    } else if combined.contains("jacket")
-        || combined.contains("short")
-        || combined.contains("tee")
-        || combined.contains("t-shirt")
-        || combined.contains("sportswear")
-        || combined.contains("apparel")
-    {
-        Some("Sportswear".to_string())
-    } else if combined.contains("shoe")
-        || combined.contains("sneaker")
-        || combined.contains("runner")
-        || combined.contains("running")
-    {
-        Some("Running".to_string())
-    } else {
-        None
-    };
+    intent.category = infer_category(&combined);
 
     let normalized_keywords =
         extract_keywords(&format!("{} {}", message, intent.keywords.join(" ")));
@@ -337,6 +311,82 @@ fn normalize_intent(mut intent: CustomerIntent, message: &str) -> CustomerIntent
     }
 
     intent
+}
+
+fn infer_category(value: &str) -> Option<String> {
+    if contains_any(
+        value,
+        &[
+            "foam roller",
+            "massage",
+            "recovery",
+            "recover",
+            "compression",
+            "sleeve",
+            "mobility",
+        ],
+    ) {
+        Some("Recovery".to_string())
+    } else if contains_any(
+        value,
+        &[
+            "yoga",
+            "mat",
+            "block",
+            "gym",
+            "training",
+            "workout",
+            "strength",
+            "lifting",
+            "glove",
+            "resistance",
+            "band",
+            "skipping",
+            "rope",
+            "cardio",
+            "boxing",
+        ],
+    ) {
+        Some("Training".to_string())
+    } else if contains_any(
+        value,
+        &[
+            "sock",
+            "accessor",
+            "cap",
+            "bottle",
+            "hydration",
+            "duffel",
+            "bag",
+            "towel",
+            "belt",
+        ],
+    ) {
+        Some("Accessories".to_string())
+    } else if contains_any(
+        value,
+        &[
+            "jacket",
+            "short",
+            "tee",
+            "t-shirt",
+            "sportswear",
+            "apparel",
+            "tank",
+            "clothes",
+            "outfit",
+        ],
+    ) {
+        Some("Sportswear".to_string())
+    } else if contains_any(value, &["shoe", "sneaker", "runner", "running", "run"]) {
+        Some("Running".to_string())
+    } else {
+        None
+    }
+}
+
+fn contains_any(value: &str, needles: &[&str]) -> bool {
+    needles.iter().any(|needle| value.contains(needle))
 }
 
 fn extract_keywords(value: &str) -> Vec<String> {
@@ -396,4 +446,34 @@ struct ChatResponse {
 #[derive(Debug, Deserialize)]
 struct ChatChoice {
     message: ChatMessage,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{extract_demo_intent, normalize_intent};
+
+    #[test]
+    fn maps_yoga_request_to_training() {
+        let intent = extract_demo_intent("Find yoga gear under 1200");
+
+        assert_eq!(intent.category.as_deref(), Some("Training"));
+        assert_eq!(intent.max_price, Some(1200));
+        assert!(intent.keywords.contains(&"yoga".to_string()));
+    }
+
+    #[test]
+    fn maps_recovery_request_to_recovery() {
+        let intent = extract_demo_intent("Recommend recovery tools under 900");
+
+        assert_eq!(intent.category.as_deref(), Some("Recovery"));
+    }
+
+    #[test]
+    fn keeps_unknown_items_out_of_catalog() {
+        let intent = extract_demo_intent("I need a laptop under 40000");
+        let intent = normalize_intent(intent, "I need a laptop under 40000");
+
+        assert_eq!(intent.category, None);
+        assert_eq!(intent.max_price, Some(40000));
+    }
 }

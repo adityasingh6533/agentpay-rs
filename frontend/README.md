@@ -1,77 +1,115 @@
 # AgentPay Frontend
 
-Frontend for the Razorpay Track 01 build: an AI revenue agent that recommends products, adds a cross-sell, gates every money action, and shows an audit trail.
+AgentPay is a Razorpay Track 01 demo for AI Growth and Agentic Commerce. It shows a merchant revenue agent that reads a backend catalog, recommends relevant products, adds cross-sells, gates every money action, creates Razorpay test-mode orders, and records an audit trail.
 
-## What To Demo
+## Winning Demo Script
 
-1. Start backend from `backend`:
+1. Start backend:
 
    ```powershell
+   cd backend
    cargo run
    ```
 
-2. Start frontend from `frontend`:
+2. Start frontend:
 
    ```powershell
+   cd frontend
    npm start
-   ```
-
-   If port 3000 is busy:
-
-   ```powershell
-   $env:PORT=3001; npm start
    ```
 
 3. Open `/agent`.
 
-4. Click `Running bundle` or type:
+4. Run growth flow:
 
    ```text
    I need running shoes under 1500
    ```
 
-5. The agent should:
+   Show:
+   - relevant recommendation from backend catalog
+   - cross-sell bundle
+   - higher cart value
+   - no payment action before authorization
 
-   - create a real backend session
-   - understand customer intent
-   - search the catalog
-   - recommend `Velocity Running Shoes`
-   - add `ProFit Running Socks` as a cross-sell
-   - build a cart around `₹1,498`
-   - wait before any payment action
-
-6. Click `Authorize` using seeded merchant id:
+5. Click `Authorize` with seeded merchant:
 
    ```text
    40000000-0000-0000-0000-000000000001
    ```
 
-7. If authorized, click `Create Razorpay Order`.
+   Show:
+   - signed intent
+   - backend price calculation
+   - policy decision
+   - customer confirmation gate when required
 
-8. Open the audit section and show every recorded step.
+6. Click `Confirm action`, then `Create Razorpay order`.
 
-## Confirmation Demo
+7. Open `/transactions`.
 
-Use:
+   Show the order created by the backend checkout pipeline.
+
+8. Open `/dashboard`.
+
+   Show backend-driven agent revenue, pipeline revenue, success rate, top products, and recent transactions.
+
+9. Open `/guardrails`.
+
+   Show policy limits, allowed categories, money-action gates, and failure demos.
+
+10. Run failure flow:
+
+   ```text
+   I need a laptop under 40000
+   ```
+
+   Show the agent refuses checkout because the merchant does not sell laptops.
+
+## Expanded Catalog Prompts
+
+Use these after applying migrations:
 
 ```text
-I need a sports jacket under 2000
+Find yoga gear under 1200
+Recommend recovery tools under 900
+I need gym clothes under 1500
+Recommend running accessories under 500
+I need a laptop under 40000
 ```
 
-This should create a higher-value cart around `₹1,899`, require customer confirmation, then allow execution only after `Confirm action`.
+Expected behavior:
+- yoga maps to Training
+- recovery maps to Recovery
+- gym clothes maps to Sportswear or Training
+- running accessories maps to Accessories
+- laptop stays out-of-catalog and cannot checkout
 
-## Failure Demo
+## Problem Statement Fit
 
-If Razorpay credentials or network access are unavailable, order creation fails safely. The backend keeps the signed intent bounded, releases reserved inventory, and records the failure in the audit trail.
+- Problem Taste: grows merchant revenue through relevant recommendation and cross-sell.
+- Build Quality: Rust backend owns pricing, policy, signatures, confirmation, inventory and Razorpay order creation.
+- AI Judgment: LLM extraction is supported, with deterministic fallback for reliable demos.
+- Safety and Control: every money action is bounded by policy and signed intent.
+- Audit Trail: agent decisions, authorization, confirmation and checkout actions are logged.
+- Failure Recovery: out-of-catalog, missing confirmation and payment failure paths stop safely.
 
-## Why This Matches The Problem Statement
+## Backend APIs Used By Frontend
 
-- `Problem Taste`: grows merchant revenue with recommendation plus cross-sell.
-- `Build Quality`: Rust backend owns pricing, policy, inventory, signatures and Razorpay order creation.
-- `AI Judgment`: LLM path exists, with deterministic fallback so the demo remains reliable.
-- `Safety & Control`: checkout requires signed authorization and customer confirmation when policy says so.
-- `Audit Trail`: every important agent and money action is visible.
-- `Failure Recovery`: Razorpay/API failure is handled without silently completing payment.
+```text
+GET  /api/catalog/products
+GET  /api/catalog/products/:id
+GET  /api/agent/catalog/:merchant_id
+POST /api/agent/sessions
+POST /api/agent/message
+GET  /api/agent/sessions/:session_id/audit
+GET  /api/policy/:merchant_id
+POST /api/checkout/authorize
+POST /api/checkout/confirmation
+POST /api/checkout/execute
+GET  /api/analytics/dashboard
+GET  /api/transactions
+```
 
 ## Environment
 
@@ -83,6 +121,9 @@ AGENT_SIGNING_SECRET=...
 RAZORPAY_KEY_ID=...
 RAZORPAY_KEY_SECRET=...
 RAZORPAY_WEBHOOK_SECRET=...
+AI_API_KEY=...
+AI_BASE_URL=...
+AI_MODEL=...
 ```
 
 Frontend `.env`:
@@ -93,7 +134,17 @@ REACT_APP_CUSTOMER_ID=demo-customer
 REACT_APP_MERCHANT_ID=40000000-0000-0000-0000-000000000001
 ```
 
-AI provider keys are optional for demo reliability because the backend has a deterministic commerce-agent fallback.
+AI keys are optional for demo reliability because the backend has a deterministic commerce-agent fallback.
+
+## Migration Note
+
+The expanded catalog is in:
+
+```text
+backend/migrations/010_expand_demo_catalog.sql
+```
+
+If `cargo sqlx migrate run` reports an older migration checksum mismatch on your local database, create a fresh local database or repair the local migration history before applying migration 10. The committed migration is safe for clean environments.
 
 ## Checks
 
