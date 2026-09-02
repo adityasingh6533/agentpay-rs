@@ -13,48 +13,115 @@ import {
   Star,
   Zap,
 } from "lucide-react";
-import "../styles/Shop.css";
-import { useState } from "react";
-import CheckoutModal from "../components/CheckoutModal";
+import {
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import { useNavigate } from "react-router-dom";
 
-const recommendations = [
-  {
-    name: "Velocity Running Shoes",
-    description: "Lightweight daily running shoe",
-    price: "₹1,299",
-    rating: "4.8",
-    reviews: "2,340",
-    tag: "BEST MATCH",
-    selected: true,
-  },
-  {
-    name: "Aero Sports Jacket",
-    description: "Breathable performance layer",
-    price: "₹1,899",
-    rating: "4.7",
-    reviews: "840",
-    tag: "TRENDING",
-    selected: false,
-  },
-  {
-    name: "FlexRun Sports Shorts",
-    description: "Flexible training shorts",
-    price: "₹899",
-    rating: "4.6",
-    reviews: "1,120",
-    tag: "POPULAR",
-    selected: false,
-  },
-];
+import "../styles/Shop.css";
+import api from "../services/api";
+import type { Product } from "../types";
+
+type CartLine = {
+  product: Product;
+  quantity: number;
+};
 
 function Shop() {
-  // CHECKOUT MODAL STATE
-  const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const navigate = useNavigate();
+  const [products, setProducts] =
+    useState<Product[]>([]);
+  const [query, setQuery] = useState("");
+  const [cart, setCart] = useState<CartLine[]>([]);
+  const [loadError, setLoadError] =
+    useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+
+    api.catalog
+      .listProducts({ limit: 50 })
+      .then((items) => {
+        if (mounted) {
+          setProducts(items);
+          setLoadError(null);
+        }
+      })
+      .catch((error) => {
+        if (mounted) {
+          setProducts([]);
+          setLoadError(
+            error instanceof Error
+              ? error.message
+              : "Could not load products."
+          );
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const filteredProducts = useMemo(() => {
+    const normalized = query.toLowerCase().trim();
+
+    if (!normalized) {
+      return products;
+    }
+
+    return products.filter(
+      (product) =>
+        product.name.toLowerCase().includes(normalized) ||
+        product.description
+          .toLowerCase()
+          .includes(normalized) ||
+        product.category.toLowerCase().includes(normalized)
+    );
+  }, [products, query]);
+
+  const featuredProducts = filteredProducts.slice(0, 6);
+  const subtotal = cart.reduce(
+    (total, line) =>
+      total + line.product.price * line.quantity,
+    0
+  );
+
+  const addToCart = (product: Product) => {
+    setCart((current) => {
+      const existing = current.find(
+        (line) => line.product.id === product.id
+      );
+
+      if (existing) {
+        return current.map((line) =>
+          line.product.id === product.id
+            ? {
+                ...line,
+                quantity: line.quantity + 1,
+              }
+            : line
+        );
+      }
+
+      return [
+        ...current,
+        {
+          product,
+          quantity: 1,
+        },
+      ];
+    });
+  };
+
+  const askAgent = () => {
+    navigate("/agent");
+  };
 
   return (
     <div className="shop-page">
-      {/* TOP NAV */}
-
       <header className="shop-nav">
         <div className="shop-brand">
           <div className="shop-brand-mark">
@@ -66,7 +133,13 @@ function Shop() {
 
         <div className="shop-search">
           <Search size={15} />
-          <input placeholder="Search products..." />
+          <input
+            value={query}
+            onChange={(event) =>
+              setQuery(event.target.value)
+            }
+            placeholder="Search backend catalog..."
+          />
         </div>
 
         <div className="shop-nav-actions">
@@ -76,28 +149,22 @@ function Shop() {
 
           <button className="cart-button">
             <ShoppingBag size={17} />
-            <span>2</span>
+            <span>{cart.length}</span>
           </button>
 
-          <div className="shop-user">RS</div>
+          <div className="shop-user">AI</div>
         </div>
       </header>
-
-      {/* MAIN */}
 
       <main className="shop-content">
         <div className="shop-breadcrumb">
           <span>Home</span>
           <ChevronRight size={12} />
-          <span>AI Shopping</span>
+          <span>Backend catalog</span>
         </div>
 
         <div className="shop-layout">
-          {/* LEFT */}
-
           <section className="shopping-main">
-            {/* AI HERO */}
-
             <div className="shopping-hero">
               <div className="shopping-hero-content">
                 <div className="ai-label">
@@ -106,35 +173,40 @@ function Shop() {
                 </div>
 
                 <h1>
-                  Find exactly what
+                  Buy from the same catalog
                   <br />
-                  you're looking for.
+                  the agent can authorize.
                 </h1>
 
                 <p>
-                  Tell me what you need and I'll find the best products
-                  for you.
+                  Products, prices and stock are loaded from the
+                  backend catalog used by the AI agent.
                 </p>
 
                 <div className="ai-search">
                   <MessageCircle size={17} />
 
                   <input
-                    value="I need running shoes under ₹1500"
+                    value="I need running shoes under Rs 1500"
                     readOnly
                   />
 
-                  <button>
+                  <button onClick={askAgent}>
                     <ArrowRight size={15} />
                   </button>
                 </div>
 
                 <div className="quick-prompts">
                   <span>Try:</span>
-
-                  <button>Best shoes for running</button>
-                  <button>Something under ₹1000</button>
-                  <button>Complete my outfit</button>
+                  <button onClick={askAgent}>
+                    Running bundle
+                  </button>
+                  <button onClick={askAgent}>
+                    Budget cap
+                  </button>
+                  <button onClick={askAgent}>
+                    Out of catalog
+                  </button>
                 </div>
               </div>
 
@@ -147,8 +219,6 @@ function Shop() {
               </div>
             </div>
 
-            {/* AI RESPONSE */}
-
             <div className="ai-response">
               <div className="response-header">
                 <div className="response-agent">
@@ -157,28 +227,28 @@ function Shop() {
                   </div>
 
                   <strong>AgentPay AI</strong>
-
-                  <span>· Just now</span>
+                  <span>Live catalog</span>
                 </div>
 
                 <span className="confidence">
-                  94% match
+                  {products.length} products
                 </span>
               </div>
 
               <p>
-                I found the best match for your budget. I also noticed
-                you're shopping specifically for running, so I've included
-                products that work well for that use case.
+                This page is a customer storefront preview. The
+                actual money movement still happens only through the
+                signed-intent authorization flow on the AI Agent page.
               </p>
             </div>
 
-            {/* PRODUCTS */}
-
             <div className="products-header">
               <div>
-                <h2>Recommended for you</h2>
-                <p>Personalized based on your request</p>
+                <h2>Backend catalog</h2>
+                <p>
+                  {loadError ||
+                    "Search and add products from the live API."}
+                </p>
               </div>
 
               <button>
@@ -188,40 +258,62 @@ function Shop() {
             </div>
 
             <div className="product-grid">
-              {recommendations.map((product) => (
+              {featuredProducts.map((product, index) => (
                 <ShopProduct
-                  key={product.name}
+                  key={product.id}
                   product={product}
+                  tag={
+                    index === 0
+                      ? "BEST MATCH"
+                      : product.stock < 10
+                      ? "LOW STOCK"
+                      : "CATALOG"
+                  }
+                  onAdd={() => addToCart(product)}
                 />
               ))}
             </div>
           </section>
 
-          {/* RIGHT CART */}
-
           <aside className="shop-cart">
             <div className="cart-header">
               <div>
                 <span>YOUR CART</span>
-                <h2>2 items</h2>
+                <h2>
+                  {cart.length} item
+                  {cart.length === 1 ? "" : "s"}
+                </h2>
               </div>
 
               <ShoppingBag size={19} />
             </div>
 
-            <CartItem
-              name="Velocity Running Shoes"
-              price="₹1,299"
-              quantity="1"
-            />
+            {cart.length === 0 ? (
+              <div className="agent-note">
+                <div className="agent-note-icon">
+                  <Bot size={14} />
+                </div>
 
-            <CartItem
-              name="ProFit Running Socks"
-              price="₹199"
-              quantity="1"
-            />
-
-            {/* SMART BUNDLE */}
+                <div>
+                  <strong>No cart yet</strong>
+                  <p>
+                    Add a product or ask the agent to build a
+                    guarded checkout bundle.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              cart.map((line) => (
+                <CartItem
+                  key={line.product.id}
+                  name={line.product.name}
+                  price={formatCurrency(
+                    line.product.price
+                  )}
+                  quantity={`${line.quantity}`}
+                />
+              ))
+            )}
 
             <div className="smart-bundle">
               <div className="bundle-icon">
@@ -229,61 +321,57 @@ function Shop() {
               </div>
 
               <div>
-                <span>AI SAVING</span>
+                <span>AI CHECKOUT RULE</span>
 
                 <strong>
-                  Complete your running bundle
+                  Agent authorization required
                 </strong>
 
                 <p>
-                  You're eligible for 10% off when you add the
-                  recommended accessory.
+                  The storefront can collect intent, but checkout is
+                  gated by policy, confirmation and audit logs.
                 </p>
               </div>
             </div>
 
-            {/* SUMMARY */}
-
             <div className="cart-summary">
               <SummaryRow
                 label="Subtotal"
-                value="₹1,498"
+                value={formatCurrency(subtotal)}
               />
 
               <SummaryRow
-                label="AI Bundle Discount"
-                value="-₹100"
+                label="Agent guardrail"
+                value="Required"
                 green
               />
 
               <SummaryRow
-                label="Delivery"
-                value="FREE"
+                label="Audit trail"
+                value="Enabled"
                 green
               />
 
               <div className="summary-total">
                 <span>Total</span>
-                <strong>₹1,398</strong>
+                <strong>
+                  {formatCurrency(subtotal)}
+                </strong>
               </div>
             </div>
 
-            {/* CHECKOUT BUTTON */}
-
             <button
               className="checkout-button"
-              onClick={() => setCheckoutOpen(true)}
+              onClick={askAgent}
             >
-              Continue to Razorpay
+              Continue with AI Agent
               <ArrowRight size={16} />
             </button>
 
             <div className="checkout-security">
               <ShieldCheck size={13} />
-              Secure checkout powered by Razorpay
+              Secure checkout powered by Razorpay test mode
             </div>
-
-            {/* AGENT EXPLANATION */}
 
             <div className="agent-note">
               <div className="agent-note-icon">
@@ -291,11 +379,11 @@ function Shop() {
               </div>
 
               <div>
-                <strong>Why this recommendation?</strong>
+                <strong>Why this matters</strong>
 
                 <p>
-                  68% of customers who bought these shoes also purchased
-                  these socks.
+                  Judges can see the storefront, catalog, policy
+                  gate and Razorpay order flow are connected.
                 </p>
               </div>
             </div>
@@ -303,29 +391,25 @@ function Shop() {
         </div>
       </main>
 
-      {/* AI FLOATING BUTTON */}
-
-      <button className="floating-agent">
+      <button
+        className="floating-agent"
+        onClick={askAgent}
+      >
         <Bot size={17} />
         Ask AI
       </button>
-
-      {/* CHECKOUT MODAL */}
-
-      <CheckoutModal
-        open={checkoutOpen}
-        cart={null}
-        action={null}
-        onClose={() => setCheckoutOpen(false)}
-      />
     </div>
   );
 }
 
 function ShopProduct({
   product,
+  tag,
+  onAdd,
 }: {
-  product: (typeof recommendations)[number];
+  product: Product;
+  tag: string;
+  onAdd: () => void;
 }) {
   return (
     <div className="shop-product">
@@ -336,14 +420,16 @@ function ShopProduct({
           <Heart size={15} />
         </button>
 
-        <span>{product.tag}</span>
+        <span>{tag}</span>
       </div>
 
       <div className="shop-product-info">
         <div className="rating">
           <Star size={11} fill="currentColor" />
-          {product.rating}
-          <span>({product.reviews})</span>
+          {Number(product.rating || 0).toFixed(1)}
+          <span>
+            ({Number(product.reviewCount || 0).toLocaleString("en-IN")})
+          </span>
         </div>
 
         <h3>{product.name}</h3>
@@ -351,9 +437,11 @@ function ShopProduct({
         <p>{product.description}</p>
 
         <div className="shop-product-bottom">
-          <strong>{product.price}</strong>
+          <strong>
+            {formatCurrency(product.price)}
+          </strong>
 
-          <button>
+          <button onClick={onAdd}>
             <Plus size={13} />
             Add
           </button>
@@ -406,6 +494,10 @@ function SummaryRow({
       </strong>
     </div>
   );
+}
+
+function formatCurrency(amount: number) {
+  return `Rs ${amount.toLocaleString("en-IN")}`;
 }
 
 export default Shop;

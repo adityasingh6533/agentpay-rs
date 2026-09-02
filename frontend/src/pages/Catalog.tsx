@@ -45,81 +45,6 @@ type CatalogProduct = {
   aiScore: number;
 };
 
-const fallbackProducts: CatalogProduct[] = [
-  {
-    id: 1,
-    name: "Velocity Running Shoes",
-    category: "Running",
-    description: "Lightweight daily running shoe",
-    price: 1299,
-    rating: 4.8,
-    reviews: "2,340",
-    stock: 42,
-    conversion: 8.7,
-    crossSell: "HIGH",
-    status: "HIGH",
-    tag: "TOP SELLER",
-    aiScore: 94,
-  },
-  {
-    id: 2,
-    name: "ProFit Running Socks",
-    category: "Accessories",
-    description: "Performance socks for daily runs",
-    price: 199,
-    rating: 4.7,
-    reviews: "1,820",
-    stock: 86,
-    conversion: 7.4,
-    crossSell: "HIGH",
-    status: "HIGH",
-    tag: "AI PICK",
-    aiScore: 91,
-  },
-  {
-    id: 3,
-    name: "Aero Sports Jacket",
-    category: "Sportswear",
-    description: "Breathable performance layer",
-    price: 1899,
-    rating: 4.7,
-    reviews: "840",
-    stock: 18,
-    conversion: 5.8,
-    crossSell: "MEDIUM",
-    status: "MEDIUM",
-    aiScore: 78,
-  },
-  {
-    id: 4,
-    name: "FlexRun Sports Shorts",
-    category: "Sportswear",
-    description: "Flexible training shorts",
-    price: 899,
-    rating: 4.6,
-    reviews: "1,120",
-    stock: 31,
-    conversion: 6.9,
-    crossSell: "MEDIUM",
-    status: "MEDIUM",
-    aiScore: 76,
-  },
-  {
-    id: 5,
-    name: "Sprint Performance Tee",
-    category: "Sportswear",
-    description: "Lightweight training performance tee",
-    price: 699,
-    rating: 4.5,
-    reviews: "670",
-    stock: 7,
-    conversion: 3.2,
-    crossSell: "LOW",
-    status: "LOW",
-    aiScore: 54,
-  },
-];
-
 function Catalog() {
   const [search, setSearch] =
     useState("");
@@ -132,13 +57,11 @@ function Catalog() {
   const [aiOnly, setAiOnly] =
     useState(false);
   const [products, setProducts] =
-    useState<CatalogProduct[]>(
-      fallbackProducts
-    );
+    useState<CatalogProduct[]>([]);
   const [
     catalogSource,
     setCatalogSource,
-  ] = useState<"API" | "DEMO">("DEMO");
+  ] = useState<"API" | "OFFLINE">("OFFLINE");
 
   useEffect(() => {
     let mounted = true;
@@ -157,8 +80,8 @@ function Catalog() {
       })
       .catch(() => {
         if (mounted) {
-          setProducts(fallbackProducts);
-          setCatalogSource("DEMO");
+          setProducts([]);
+          setCatalogSource("OFFLINE");
         }
       });
 
@@ -270,10 +193,9 @@ function Catalog() {
           </div>
 
           <p>
-            Source: {catalogSource}. The running
-            category has strong demand; bundling
-            complementary products can lift average
-            order value by an estimated 12-18%.
+            Source: {catalogSource}. Catalog data is loaded
+            from the backend so AI buyers see the same products
+            that checkout can authorize.
           </p>
         </div>
 

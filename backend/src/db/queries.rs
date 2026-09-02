@@ -34,6 +34,45 @@ pub struct WebhookEventInsert {
     pub payload: Value,
 }
 
+#[derive(Debug, sqlx::FromRow)]
+pub struct DashboardSummary {
+    pub captured_revenue: i64,
+    pub pipeline_revenue: i64,
+    pub agent_revenue: i64,
+    pub total_checkouts: i64,
+    pub paid_checkouts: i64,
+    pub failed_checkouts: i64,
+    pub agent_checkouts: i64,
+    pub cross_sell_revenue: i64,
+    pub audit_events: i64,
+}
+
+#[derive(Debug, sqlx::FromRow)]
+pub struct RecentTransaction {
+    pub id: Uuid,
+    pub customer_name: String,
+    pub product_summary: Option<String>,
+    pub amount: i64,
+    pub currency: String,
+    pub status: String,
+    pub razorpay_order_id: Option<String>,
+    pub agent_influenced: bool,
+    pub agent_action: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, sqlx::FromRow)]
+pub struct TopProductMetric {
+    pub id: Uuid,
+    pub name: String,
+    pub category: String,
+    pub revenue: i64,
+    pub orders: i64,
+    pub rating: Option<f64>,
+    pub stock: i64,
+    pub growth_signal: String,
+}
+
 pub async fn create_customer_session(
     pool: &PgPool,
     customer: CreateCustomer,
@@ -140,6 +179,88 @@ pub async fn get_checkout_products(
     )
     .bind(product_ids)
     .fetch_all(pool)
+    .await
+}
+
+pub async fn list_products(
+    pool: &PgPool,
+    category: Option<&str>,
+    search: Option<&str>,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<Product>, sqlx::Error> {
+    let category_pattern = category
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| format!("%{}%", value.trim()));
+    let search_pattern = search
+        .filter(|value| !value.trim().is_empty())
+        .map(|value| format!("%{}%", value.trim()));
+
+    sqlx::query_as::<_, Product>(
+        r#"
+        SELECT
+            id,
+            name,
+            description,
+            category,
+            price,
+            currency::text AS currency,
+            stock,
+            rating::float8 AS rating,
+            review_count,
+            active,
+            metadata,
+            created_at,
+            updated_at
+        FROM products
+        WHERE active = TRUE
+          AND ($1::text IS NULL OR category ILIKE $1)
+          AND (
+              $2::text IS NULL
+              OR name ILIKE $2
+              OR description ILIKE $2
+              OR category ILIKE $2
+              OR metadata::text ILIKE $2
+          )
+        ORDER BY stock > 0 DESC, rating DESC NULLS LAST, review_count DESC, name ASC
+        LIMIT $3 OFFSET $4
+        "#,
+    )
+    .bind(category_pattern)
+    .bind(search_pattern)
+    .bind(limit)
+    .bind(offset)
+    .fetch_all(pool)
+    .await
+}
+
+pub async fn get_product_by_id(
+    pool: &PgPool,
+    product_id: Uuid,
+) -> Result<Option<Product>, sqlx::Error> {
+    sqlx::query_as::<_, Product>(
+        r#"
+        SELECT
+            id,
+            name,
+            description,
+            category,
+            price,
+            currency::text AS currency,
+            stock,
+            rating::float8 AS rating,
+            review_count,
+            active,
+            metadata,
+            created_at,
+            updated_at
+        FROM products
+        WHERE id = $1
+          AND active = TRUE
+        "#,
+    )
+    .bind(product_id)
+    .fetch_optional(pool)
     .await
 }
 
@@ -276,6 +397,161 @@ pub async fn get_today_spending(pool: &PgPool, customer_id: Uuid) -> Result<i64,
     .await?;
 
     Ok(row.get("total"))
+}
+
+pub async fn get_dashboard_summary(pool: &PgPool) -> Result<DashboardSummary, sqlx::Error> {
+    sqlx::query_as::<_, DashboardSummary>(
+        r#"
+        WITH checkout_metrics AS (
+            SELECT
+                COALESCE(SUM(amount) FILTER (WHERE status = 'PAID'::checkout_status), 0)::bigint
+                    AS captured_revenue,
+                COALESCE(SUM(amount) FILTER (
+                    WHERE status IN (
+                        'CREATED'::checkout_status,
+                        'PENDING'::checkout_status,
+                        'PAID'::checkout_status
+                    )
+                ), 0)::bigint AS pipeline_revenue,
+                COALESCE(SUM(amount) FILTER (
+                    WHERE agent_intent_id IS NOT NULL
+                      AND status IN (
+                        'CREATED'::checkout_status,
+                        'PENDING'::checkout_status,
+                        'PAID'::checkout_status
+                      )
+                ), 0)::bigint AS agent_revenue,
+                COUNT(*)::bigint AS total_checkouts,
+                COUNT(*) FILTER (WHERE status = 'PAID'::checkout_status)::bigint AS paid_checkouts,
+                COUNT(*) FILTER (WHERE status = 'FAILED'::checkout_status)::bigint AS failed_checkouts,
+                COUNT(*) FILTER (WHERE agent_intent_id IS NOT NULL)::bigint AS agent_checkouts
+            FROM checkouts
+        ),
+        ranked_items AS (
+            SELECT
+                ci.cart_id,
+                ci.total_price,
+                ROW_NUMBER() OVER (
+                    PARTITION BY ci.cart_id
+                    ORDER BY ci.total_price DESC, ci.created_at ASC
+                ) AS item_rank
+            FROM cart_items ci
+            JOIN checkouts c ON c.cart_id = ci.cart_id
+            WHERE c.agent_intent_id IS NOT NULL
+              AND c.status IN (
+                'CREATED'::checkout_status,
+                'PENDING'::checkout_status,
+                'PAID'::checkout_status
+              )
+        ),
+        cross_sell AS (
+            SELECT COALESCE(SUM(total_price) FILTER (WHERE item_rank > 1), 0)::bigint
+                AS cross_sell_revenue
+            FROM ranked_items
+        ),
+        audit AS (
+            SELECT COUNT(*)::bigint AS audit_events
+            FROM audit_events
+        )
+        SELECT
+            cm.captured_revenue,
+            cm.pipeline_revenue,
+            cm.agent_revenue,
+            cm.total_checkouts,
+            cm.paid_checkouts,
+            cm.failed_checkouts,
+            cm.agent_checkouts,
+            cs.cross_sell_revenue,
+            audit.audit_events
+        FROM checkout_metrics cm
+        CROSS JOIN cross_sell cs
+        CROSS JOIN audit
+        "#,
+    )
+    .fetch_one(pool)
+    .await
+}
+
+pub async fn get_recent_transactions(
+    pool: &PgPool,
+    limit: i64,
+) -> Result<Vec<RecentTransaction>, sqlx::Error> {
+    sqlx::query_as::<_, RecentTransaction>(
+        r#"
+        SELECT
+            c.id,
+            customers.name AS customer_name,
+            STRING_AGG(ci.product_name, ' + ' ORDER BY ci.created_at ASC) AS product_summary,
+            c.amount,
+            c.currency::text AS currency,
+            c.status::text AS status,
+            c.razorpay_order_id,
+            c.agent_intent_id IS NOT NULL AS agent_influenced,
+            CASE
+                WHEN c.agent_intent_id IS NOT NULL
+                     AND COUNT(ci.id) > 1 THEN 'Cross-sell'
+                WHEN c.agent_intent_id IS NOT NULL THEN 'Recommendation'
+                ELSE 'Direct'
+            END AS agent_action,
+            c.created_at
+        FROM checkouts c
+        JOIN customers ON customers.id = c.customer_id
+        LEFT JOIN cart_items ci ON ci.cart_id = c.cart_id
+        GROUP BY
+            c.id,
+            customers.name,
+            c.amount,
+            c.currency,
+            c.status,
+            c.razorpay_order_id,
+            c.agent_intent_id,
+            c.created_at
+        ORDER BY c.created_at DESC
+        LIMIT $1
+        "#,
+    )
+    .bind(limit)
+    .fetch_all(pool)
+    .await
+}
+
+pub async fn get_top_product_metrics(
+    pool: &PgPool,
+    limit: i64,
+) -> Result<Vec<TopProductMetric>, sqlx::Error> {
+    sqlx::query_as::<_, TopProductMetric>(
+        r#"
+        SELECT
+            p.id,
+            p.name,
+            p.category,
+            COALESCE(SUM(ci.total_price), 0)::bigint AS revenue,
+            COUNT(DISTINCT c.id)::bigint AS orders,
+            p.rating::float8 AS rating,
+            p.stock,
+            CASE
+                WHEN EXISTS (
+                    SELECT 1
+                    FROM product_relationships pr
+                    WHERE pr.product_id = p.id
+                      AND pr.relationship_type = 'CROSS_SELL'
+                      AND pr.confidence >= 0.75
+                ) THEN 'HIGH'
+                WHEN p.stock > 0 AND COALESCE(p.rating, 0) >= 4.5 THEN 'MEDIUM'
+                ELSE 'LOW'
+            END AS growth_signal
+        FROM products p
+        LEFT JOIN cart_items ci ON ci.product_id = p.id
+        LEFT JOIN checkouts c ON c.cart_id = ci.cart_id
+        WHERE p.active = TRUE
+        GROUP BY p.id, p.name, p.category, p.rating, p.stock
+        ORDER BY revenue DESC, p.rating DESC NULLS LAST, p.review_count DESC, p.name ASC
+        LIMIT $1
+        "#,
+    )
+    .bind(limit)
+    .fetch_all(pool)
+    .await
 }
 
 pub async fn save_signed_agent_intent(

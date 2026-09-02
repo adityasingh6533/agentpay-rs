@@ -6,6 +6,7 @@ import {
   CreditCard,
   ShieldCheck,
   Sparkles,
+  Target,
 } from "lucide-react";
 
 import "../styles/Agent.css";
@@ -84,6 +85,39 @@ function AgentContent() {
         >
           <span />
           {formatAgentStatus(status)}
+        </div>
+      </div>
+
+      <div className="agent-demo-card">
+        <div className="agent-demo-title">
+          <Target size={17} />
+          <div>
+            <span>JUDGE DEMO</span>
+            <strong>Show the full Track 01 proof in this order</strong>
+          </div>
+        </div>
+
+        <div className="agent-demo-grid">
+          <DemoStep
+            number="1"
+            title="Growth"
+            text="Ask: I need running shoes under 1500. Show product plus cross-sell and AOV lift."
+          />
+          <DemoStep
+            number="2"
+            title="Guardrail"
+            text="Click Authorize. Show signed intent, backend amount, policy checks and confirmation gate."
+          />
+          <DemoStep
+            number="3"
+            title="Razorpay"
+            text="Confirm, then create test-mode Razorpay order. Show order id and transaction page."
+          />
+          <DemoStep
+            number="4"
+            title="Failure"
+            text="Ask: I need a mobile phone under 2000. Show out-of-catalog stop and audit trail."
+          />
         </div>
       </div>
 
@@ -374,6 +408,26 @@ function Guardrail({
           ? "BLOCKED"
           : "REVIEW"}
       </span>
+    </div>
+  );
+}
+
+function DemoStep({
+  number,
+  title,
+  text,
+}: {
+  number: string;
+  title: string;
+  text: string;
+}) {
+  return (
+    <div className="agent-demo-step">
+      <span>{number}</span>
+      <div>
+        <strong>{title}</strong>
+        <p>{text}</p>
+      </div>
     </div>
   );
 }

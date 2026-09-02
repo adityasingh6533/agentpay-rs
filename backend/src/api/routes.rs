@@ -4,7 +4,7 @@ use axum::{
     routing::{get, post},
 };
 
-use super::{catalog, checkout};
+use super::{analytics, catalog, checkout, policy};
 
 use crate::api::agent_catalog;
 use crate::{AppState, errors::AppError, webhooks};
@@ -34,6 +34,11 @@ pub fn router() -> Router<AppState> {
             get(super::agent::get_audit_trail),
         )
         .route("/agent/message", post(super::agent::process_message))
+        .route("/catalog/products", get(catalog::list_products))
+        .route("/catalog/products/{product_id}", get(catalog::get_product))
+        .route("/analytics/dashboard", get(analytics::dashboard))
+        .route("/transactions", get(analytics::transactions))
+        .route("/policy/{merchant_id}", get(policy::get_policy))
         .route("/checkout/authorize", post(checkout::authorize_checkout))
         .route("/checkout/execute", post(checkout::execute_checkout))
         .route(

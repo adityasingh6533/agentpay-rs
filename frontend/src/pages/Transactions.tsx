@@ -13,8 +13,16 @@ import {
   TrendingUp,
   X,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+
 import "../styles/Transactions.css";
+import api, {
+  type AnalyticsTransaction,
+} from "../services/api";
 
 type Transaction = {
   id: string;
@@ -29,85 +37,48 @@ type Transaction = {
   agentAction: string;
 };
 
-const transactions: Transaction[] = [
-  {
-    id: "AGT-8291",
-    customer: "Rahul Sharma",
-    initials: "RS",
-    product: "Velocity Running Shoes + Socks",
-    amount: 1398,
-    status: "Captured",
-    method: "UPI",
-    date: "Today · 10:42 AM",
-    agentInfluenced: true,
-    agentAction: "Cross-sell",
-  },
-  {
-    id: "AGT-8290",
-    customer: "Amit Verma",
-    initials: "AV",
-    product: "Aero Sports Jacket",
-    amount: 1899,
-    status: "Captured",
-    method: "Card",
-    date: "Today · 09:31 AM",
-    agentInfluenced: true,
-    agentAction: "Recommendation",
-  },
-  {
-    id: "AGT-8289",
-    customer: "Neha Singh",
-    initials: "NS",
-    product: "FlexRun Sports Shorts",
-    amount: 899,
-    status: "Captured",
-    method: "UPI",
-    date: "Today · 08:54 AM",
-    agentInfluenced: false,
-    agentAction: "",
-  },
-  {
-    id: "AGT-8288",
-    customer: "Rohan Gupta",
-    initials: "RG",
-    product: "Sprint Performance Tee",
-    amount: 699,
-    status: "Pending",
-    method: "UPI",
-    date: "Yesterday · 11:42 PM",
-    agentInfluenced: true,
-    agentAction: "Bundle",
-  },
-  {
-    id: "AGT-8287",
-    customer: "Priya Kapoor",
-    initials: "PK",
-    product: "Velocity Running Shoes",
-    amount: 1299,
-    status: "Captured",
-    method: "Card",
-    date: "Yesterday · 08:18 PM",
-    agentInfluenced: true,
-    agentAction: "Recommendation",
-  },
-  {
-    id: "AGT-8286",
-    customer: "Karan Mehta",
-    initials: "KM",
-    product: "ProFit Running Socks",
-    amount: 199,
-    status: "Failed",
-    method: "UPI",
-    date: "Yesterday · 06:41 PM",
-    agentInfluenced: false,
-    agentAction: "",
-  },
-];
-
 function Transactions() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("All");
   const [agentOnly, setAgentOnly] = useState(false);
+  const [transactions, setTransactions] =
+    useState<Transaction[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<
+    string | null
+  >(null);
+
+  useEffect(() => {
+    let mounted = true;
+
+    api.analytics
+      .transactions({ limit: 50 })
+      .then((items) => {
+        if (mounted) {
+          setTransactions(items.map(mapTransaction));
+          setLoadError(null);
+        }
+      })
+      .catch((error) => {
+        if (mounted) {
+          setTransactions([]);
+          setLoadError(
+            error instanceof Error
+              ? error.message
+              : "Could not load transactions."
+          );
+        }
+      })
+      .finally(() => {
+        if (mounted) {
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const filteredTransactions = useMemo(() => {
     return transactions.filter((transaction) => {
@@ -119,20 +90,14 @@ function Transactions() {
         transaction.product.toLowerCase().includes(query);
 
       const matchesStatus =
-        status === "All" ||
-        transaction.status === status;
+        status === "All" || transaction.status === status;
 
       const matchesAgent =
-        !agentOnly ||
-        transaction.agentInfluenced;
+        !agentOnly || transaction.agentInfluenced;
 
-      return (
-        matchesSearch &&
-        matchesStatus &&
-        matchesAgent
-      );
+      return matchesSearch && matchesStatus && matchesAgent;
     });
-  }, [search, status, agentOnly]);
+  }, [search, status, agentOnly, transactions]);
 
   const capturedRevenue = transactions
     .filter((item) => item.status === "Captured")
@@ -141,15 +106,16 @@ function Transactions() {
   const agentRevenue = transactions
     .filter(
       (item) =>
-        item.status === "Captured" &&
-        item.agentInfluenced
+        item.status === "Captured" && item.agentInfluenced
     )
     .reduce((sum, item) => sum + item.amount, 0);
 
+  const agentCount = transactions.filter(
+    (item) => item.agentInfluenced
+  ).length;
+
   return (
     <div className="transactions-page">
-      {/* HEADER */}
-
       <div className="transactions-header">
         <div>
           <div className="transactions-eyebrow">
@@ -159,7 +125,8 @@ function Transactions() {
           <h1>Transactions</h1>
 
           <p>
-            Track payments, agent influence and checkout activity.
+            Real checkout activity from the backend payment
+            pipeline.
           </p>
         </div>
 
@@ -168,8 +135,6 @@ function Transactions() {
           Export
         </button>
       </div>
-
-      {/* AI PAYMENT INSIGHT */}
 
       <div className="transaction-ai-banner">
         <div className="transaction-ai-icon">
@@ -180,56 +145,49 @@ function Transactions() {
           <span>AGENT REVENUE</span>
 
           <strong>
-            ₹{agentRevenue.toLocaleString("en-IN")} influenced by AI
+            {formatCurrency(agentRevenue)} influenced by AI
           </strong>
 
           <p>
-            Your agent influenced{" "}
-            {transactions.filter(
-              (item) => item.agentInfluenced
-            ).length}{" "}
-            recent transactions through recommendations and
-            cross-sells.
+            {agentCount} checkout
+            {agentCount === 1 ? "" : "s"} came through
+            recommendation, cross-sell or guarded agent action.
           </p>
         </div>
 
         <div className="agent-revenue-growth">
           <TrendingUp size={12} />
-          +31.6%
+          LIVE
         </div>
       </div>
-
-      {/* STATS */}
 
       <div className="transaction-stats">
         <TransactionStat
           label="CAPTURED REVENUE"
-          value={`₹${capturedRevenue.toLocaleString("en-IN")}`}
+          value={formatCurrency(capturedRevenue)}
           icon={<CreditCard size={15} />}
         />
 
         <TransactionStat
           label="TRANSACTIONS"
-          value="148"
+          value={`${transactions.length}`}
           icon={<ShieldCheck size={15} />}
         />
 
         <TransactionStat
           label="AI INFLUENCED"
-          value="63"
+          value={`${agentCount}`}
           icon={<Sparkles size={15} />}
           purple
         />
 
         <TransactionStat
           label="SUCCESS RATE"
-          value="96.8%"
+          value={formatSuccessRate(transactions)}
           icon={<Check size={15} />}
           green
         />
       </div>
-
-      {/* TOOLBAR */}
 
       <div className="transactions-toolbar">
         <div className="transaction-search">
@@ -237,16 +195,12 @@ function Transactions() {
 
           <input
             value={search}
-            onChange={(e) =>
-              setSearch(e.target.value)
-            }
+            onChange={(event) => setSearch(event.target.value)}
             placeholder="Search transaction, customer..."
           />
 
           {search && (
-            <button
-              onClick={() => setSearch("")}
-            >
+            <button onClick={() => setSearch("")}>
               <X size={11} />
             </button>
           )}
@@ -258,9 +212,7 @@ function Transactions() {
 
             <select
               value={status}
-              onChange={(e) =>
-                setStatus(e.target.value)
-              }
+              onChange={(event) => setStatus(event.target.value)}
             >
               <option>All</option>
               <option>Captured</option>
@@ -273,13 +225,9 @@ function Transactions() {
 
           <button
             className={
-              agentOnly
-                ? "agent-filter active"
-                : "agent-filter"
+              agentOnly ? "agent-filter active" : "agent-filter"
             }
-            onClick={() =>
-              setAgentOnly((value) => !value)
-            }
+            onClick={() => setAgentOnly((value) => !value)}
           >
             <Sparkles size={11} />
             AI influenced
@@ -287,15 +235,15 @@ function Transactions() {
         </div>
       </div>
 
-      {/* TABLE */}
-
       <div className="transactions-card">
         <div className="transactions-card-header">
           <div>
             <span>PAYMENT ACTIVITY</span>
 
             <strong>
-              {filteredTransactions.length} recent transactions
+              {isLoading
+                ? "Loading checkout activity"
+                : `${filteredTransactions.length} recent transactions`}
             </strong>
           </div>
 
@@ -323,21 +271,24 @@ function Transactions() {
             />
           ))}
 
-          {filteredTransactions.length === 0 && (
+          {!isLoading && filteredTransactions.length === 0 && (
             <div className="transaction-empty">
               <Search size={22} />
 
-              <strong>No transactions found</strong>
+              <strong>
+                {loadError
+                  ? "Transactions unavailable"
+                  : "No transactions found"}
+              </strong>
 
               <span>
-                Try changing your search or filters.
+                {loadError ||
+                  "Create a Razorpay order from the AI Agent page, then return here."}
               </span>
             </div>
           )}
         </div>
       </div>
-
-      {/* PAYMENT VERIFICATION */}
 
       <div className="verification-card">
         <div className="verification-icon">
@@ -352,9 +303,8 @@ function Transactions() {
           </strong>
 
           <p>
-            Every successful payment is verified through the
-            Razorpay payment flow before the agent marks an order
-            as completed.
+            Orders shown here are created by the backend after
+            signed-intent authorization and customer confirmation.
           </p>
         </div>
 
@@ -409,15 +359,10 @@ function TransactionRow({
 }) {
   return (
     <div className="transaction-row">
-      {/* ID */}
-
       <div className="transaction-id">
         <strong>{transaction.id}</strong>
-
         <span>{transaction.date}</span>
       </div>
-
-      {/* CUSTOMER */}
 
       <div className="transaction-customer">
         <div className="customer-initials">
@@ -426,18 +371,13 @@ function TransactionRow({
 
         <div>
           <strong>{transaction.customer}</strong>
-
           <span>{transaction.product}</span>
         </div>
       </div>
 
-      {/* AMOUNT */}
-
       <strong className="transaction-amount">
-        ₹{transaction.amount.toLocaleString("en-IN")}
+        {formatCurrency(transaction.amount)}
       </strong>
-
-      {/* PAYMENT */}
 
       <div className="transaction-payment">
         <CreditCard size={11} />
@@ -448,8 +388,6 @@ function TransactionRow({
         </div>
       </div>
 
-      {/* AGENT */}
-
       <div>
         {transaction.agentInfluenced ? (
           <div className="agent-influence">
@@ -457,33 +395,18 @@ function TransactionRow({
             {transaction.agentAction}
           </div>
         ) : (
-          <span className="no-agent">
-            Direct
-          </span>
+          <span className="no-agent">Direct</span>
         )}
       </div>
-
-      {/* STATUS */}
 
       <div
         className={`transaction-status ${transaction.status.toLowerCase()}`}
       >
-        {transaction.status === "Captured" && (
-          <Check size={9} />
-        )}
-
-        {transaction.status === "Pending" && (
-          <Clock3 size={9} />
-        )}
-
-        {transaction.status === "Failed" && (
-          <X size={9} />
-        )}
-
+        {transaction.status === "Captured" && <Check size={9} />}
+        {transaction.status === "Pending" && <Clock3 size={9} />}
+        {transaction.status === "Failed" && <X size={9} />}
         {transaction.status}
       </div>
-
-      {/* VIEW */}
 
       <button
         className="view-transaction"
@@ -493,6 +416,79 @@ function TransactionRow({
       </button>
     </div>
   );
+}
+
+function mapTransaction(
+  transaction: AnalyticsTransaction
+): Transaction {
+  return {
+    id: transaction.id.slice(0, 8),
+    customer: transaction.customer_name,
+    initials: getInitials(transaction.customer_name),
+    product: transaction.product_summary || "Checkout",
+    amount: transaction.amount,
+    status: mapStatus(transaction.status),
+    method: "Razorpay",
+    date: formatDate(transaction.created_at),
+    agentInfluenced: transaction.agent_influenced,
+    agentAction:
+      transaction.agent_action === "Direct"
+        ? ""
+        : transaction.agent_action,
+  };
+}
+
+function mapStatus(status: string): Transaction["status"] {
+  if (status === "PAID") {
+    return "Captured";
+  }
+
+  if (status === "FAILED") {
+    return "Failed";
+  }
+
+  return "Pending";
+}
+
+function getInitials(name: string) {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
+}
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat("en-IN", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
+
+function formatCurrency(amount: number) {
+  return `Rs ${amount.toLocaleString("en-IN")}`;
+}
+
+function formatSuccessRate(transactions: Transaction[]) {
+  const completed = transactions.filter(
+    (item) =>
+      item.status === "Captured" ||
+      item.status === "Failed"
+  );
+
+  if (completed.length === 0) {
+    return "100%";
+  }
+
+  const captured = completed.filter(
+    (item) => item.status === "Captured"
+  ).length;
+
+  return `${Math.round(
+    (captured / completed.length) * 100
+  )}%`;
 }
 
 export default Transactions;

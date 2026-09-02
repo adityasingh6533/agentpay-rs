@@ -24,6 +24,53 @@ import type {
   Checkout,
 } from "../types";
 
+export type AnalyticsTransaction = {
+  id: string;
+  customer_name: string;
+  product_summary: string;
+  amount: number;
+  currency: string;
+  status: string;
+  razorpay_order_id?: string;
+  agent_influenced: boolean;
+  agent_action: string;
+  created_at: string;
+};
+
+export type AnalyticsTopProduct = {
+  id: string;
+  name: string;
+  category: string;
+  revenue: number;
+  orders: number;
+  rating?: number;
+  stock: number;
+  growth_signal: "HIGH" | "MEDIUM" | "LOW";
+};
+
+export type DashboardAnalytics = {
+  summary: {
+    captured_revenue: number;
+    pipeline_revenue: number;
+    agent_revenue: number;
+    total_checkouts: number;
+    paid_checkouts: number;
+    failed_checkouts: number;
+    agent_checkouts: number;
+    cross_sell_revenue: number;
+    audit_events: number;
+    success_rate: number;
+  };
+  recent_transactions: AnalyticsTransaction[];
+  top_products: AnalyticsTopProduct[];
+  growth: {
+    aov_before: number;
+    aov_after: number;
+    aov_uplift_percent: number;
+    cross_sell_attach_rate: number;
+  };
+};
+
 /* =========================================================
    API CONFIG
    ========================================================= */
@@ -406,11 +453,30 @@ const policy = {
     merchantId: string
   ): Promise<SpendingLimits> {
     const response =
-      await client.get<SpendingLimits>(
+      await client.get<any>(
         `/policy/${merchantId}`
       );
 
-    return response.data;
+    return {
+      id: response.data.id,
+      merchantId:
+        response.data.merchant_id,
+      maxTransactionAmount:
+        response.data
+          .max_transaction_amount,
+      dailyLimit:
+        response.data
+          .daily_transaction_limit,
+      allowedCategories:
+        response.data
+          .allowed_categories || [],
+      requiresConfirmationAbove:
+        response.data
+          .requires_confirmation_above,
+      currency:
+        response.data.currency ||
+        "INR",
+    };
   },
 };
 
@@ -517,6 +583,36 @@ const checkout = {
 };
 
 /* =========================================================
+   ANALYTICS API
+   ========================================================= */
+
+const analytics = {
+  async dashboard(): Promise<DashboardAnalytics> {
+    const response =
+      await client.get<DashboardAnalytics>(
+        "/analytics/dashboard"
+      );
+
+    return response.data;
+  },
+
+  async transactions(
+    params?: {
+      limit?: number;
+    }
+  ): Promise<AnalyticsTransaction[]> {
+    const response =
+      await client.get<
+        AnalyticsTransaction[]
+      >("/transactions", {
+        params,
+      });
+
+    return response.data;
+  },
+};
+
+/* =========================================================
    EXPORT
    ========================================================= */
 
@@ -527,6 +623,7 @@ const api = {
   cart,
   policy,
   checkout,
+  analytics,
 };
 
 export default api;
