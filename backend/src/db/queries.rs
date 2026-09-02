@@ -74,10 +74,7 @@ pub async fn search_products(
     max_price: Option<i64>,
     limit: i64,
 ) -> Result<Vec<Product>, sqlx::Error> {
-    let search_pattern =
-        category.map(|value| {
-            format!("%{}%", value.trim())
-        });
+    let search_pattern = category.map(|value| format!("%{}%", value.trim()));
 
     sqlx::query_as::<_, Product>(
         r#"

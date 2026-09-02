@@ -6,6 +6,7 @@ use crate::{db::queries, errors::AppError, models::Product};
 pub struct CatalogCandidate {
     pub product: Product,
     pub score: f64,
+    pub relevance_score: f64,
     pub reasons: Vec<String>,
 }
 
@@ -29,17 +30,17 @@ pub fn rank_products(
     max_price: Option<i64>,
     keywords: &[String],
 ) -> Vec<CatalogCandidate> {
+    let keywords = normalize_keywords(keywords);
+
     let mut candidates = products
         .into_iter()
         .map(|product| {
             let mut score = 0.0;
+            let mut relevance_score = 0.0;
             let mut reasons = Vec::new();
             let searchable = format!(
                 "{} {} {} {}",
-                product.name,
-                product.description,
-                product.category,
-                product.metadata
+                product.name, product.description, product.category, product.metadata
             )
             .to_lowercase();
 
@@ -51,8 +52,10 @@ pub fn rank_products(
                     score += 35.0;
 
                     reasons.push("category matches customer intent".to_string());
+                    relevance_score += 35.0;
                 } else if searchable.contains(&category) {
                     score += 22.0;
+                    relevance_score += 22.0;
 
                     reasons.push("product text matches customer intent".to_string());
                 }
@@ -60,12 +63,13 @@ pub fn rank_products(
 
             let keyword_hits = keywords
                 .iter()
-                .filter(|keyword| keyword.len() > 2)
-                .filter(|keyword| searchable.contains(&keyword.to_lowercase()))
+                .filter(|keyword| searchable.contains(keyword.as_str()))
                 .count();
 
             if keyword_hits > 0 {
-                score += (keyword_hits as f64 * 8.0).min(24.0);
+                let keyword_score = (keyword_hits as f64 * 8.0).min(24.0);
+                score += keyword_score;
+                relevance_score += keyword_score;
 
                 reasons.push("matches customer keywords".to_string());
             }
@@ -111,9 +115,11 @@ pub fn rank_products(
             CatalogCandidate {
                 product,
                 score,
+                relevance_score,
                 reasons,
             }
         })
+        .filter(|candidate| candidate.relevance_score > 0.0)
         .collect::<Vec<_>>();
 
     candidates.sort_by(|a, b| {
@@ -123,4 +129,46 @@ pub fn rank_products(
     });
 
     candidates
+}
+
+fn normalize_keywords(keywords: &[String]) -> Vec<String> {
+    keywords
+        .iter()
+        .flat_map(|keyword| {
+            keyword
+                .split(|character: char| !character.is_ascii_alphanumeric())
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        })
+        .map(|keyword| keyword.to_lowercase())
+        .filter(|keyword| keyword.len() > 2)
+        .filter(|keyword| !keyword.chars().all(|character| character.is_ascii_digit()))
+        .filter(|keyword| !is_stop_word(keyword))
+        .collect()
+}
+
+fn is_stop_word(keyword: &str) -> bool {
+    matches!(
+        keyword,
+        "need"
+            | "want"
+            | "show"
+            | "find"
+            | "recommend"
+            | "buy"
+            | "under"
+            | "below"
+            | "less"
+            | "than"
+            | "best"
+            | "good"
+            | "for"
+            | "with"
+            | "and"
+            | "the"
+            | "that"
+            | "this"
+            | "please"
+            | "looking"
+    )
 }

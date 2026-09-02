@@ -45,8 +45,5 @@ pub fn router() -> Router<AppState> {
             post(checkout::request_confirmation),
         )
         .route("/agent/catalog", get(agent_catalog::get_agent_catalog))
-        .route(
-            "/agent/catalog/{merchant_id}",
-            get(catalog::agent_catalog),
-        )
+        .route("/agent/catalog/{merchant_id}", get(catalog::agent_catalog))
 }

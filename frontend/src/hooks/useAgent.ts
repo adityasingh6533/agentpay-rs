@@ -21,6 +21,7 @@ export type AgentStatus =
   | "IDLE"
   | "UNDERSTANDING"
   | "SEARCHING"
+  | "OUT_OF_CATALOG"
   | "DECIDING"
   | "READY_FOR_AUTHORIZATION"
   | "GUARDRAIL_CHECK"
@@ -257,7 +258,7 @@ export function useAgent({
                 id: item.product_id,
                 name: item.product_name,
                 description:
-                  item.reasons.join(" · "),
+                  item.reasons.join(" - "),
                 category:
                   result.intent.category ||
                   "Commerce",
@@ -270,7 +271,7 @@ export function useAgent({
               },
               matchScore: item.score,
               reason:
-                item.reasons.join(" · "),
+                item.reasons.join(" - "),
             })
           );
 
@@ -281,11 +282,8 @@ export function useAgent({
         if (!primary) {
           setDecision(null);
           setCart(null);
-          setStatus("FAILED");
-          setError({
-            message:
-              "The agent could not find a suitable product.",
-          });
+          setAuthorization(null);
+          setStatus("OUT_OF_CATALOG");
 
           await loadAuditTrail(
             activeSession.id
@@ -672,7 +670,8 @@ export function useAgent({
   const isTerminal =
     status === "COMPLETED" ||
     status === "FAILED" ||
-    status === "BLOCKED";
+    status === "BLOCKED" ||
+    status === "OUT_OF_CATALOG";
 
   const currentRecommendation =
     useMemo(

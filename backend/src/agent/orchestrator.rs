@@ -36,12 +36,8 @@ impl AgentOrchestrator {
 
         let intent = normalize_intent(self.extract_intent(message).await?, message);
 
-        let mut products =
+        let products =
             catalog::search(&self.db, intent.category.as_deref(), intent.max_price).await?;
-
-        if products.is_empty() && intent.category.is_some() {
-            products = catalog::search(&self.db, None, intent.max_price).await?;
-        }
 
         let ranked = catalog::rank_products(
             products,
@@ -102,22 +98,41 @@ impl AgentOrchestrator {
     )
     .await?;
 
-        crate::db::queries::create_audit_event(
-            &self.db,
-            session_id,
-            "AGENT_DECISION_CREATED",
-            "AGENT",
-            "SUCCESS",
-            "Agent generated a personalized product recommendation.",
-            serde_json::json!({
-                "decision_id": decision_id,
-                "confidence": intent.confidence,
-                "has_cross_sell": cross_sell.is_some(),
-            }),
-        )
-        .await?;
+        if recommendations.is_empty() {
+            crate::db::queries::create_audit_event(
+                &self.db,
+                session_id,
+                "AGENT_RECOMMENDATION_SKIPPED",
+                "AGENT",
+                "REVIEW",
+                "No catalog item matched the customer request, so checkout stayed locked.",
+                serde_json::json!({
+                    "decision_id": decision_id,
+                    "confidence": intent.confidence,
+                    "requested_category": intent.category.clone(),
+                    "requested_keywords": intent.keywords.clone(),
+                    "reason": "OUT_OF_CATALOG",
+                }),
+            )
+            .await?;
+        } else {
+            crate::db::queries::create_audit_event(
+                &self.db,
+                session_id,
+                "AGENT_DECISION_CREATED",
+                "AGENT",
+                "SUCCESS",
+                "Agent generated a personalized product recommendation.",
+                serde_json::json!({
+                    "decision_id": decision_id,
+                    "confidence": intent.confidence,
+                    "has_cross_sell": cross_sell.is_some(),
+                }),
+            )
+            .await?;
+        }
         let response = if recommendations.is_empty() {
-            "I couldn't find an available product matching your requirements.".to_string()
+            "This merchant catalog does not sell a matching product, so I will not authorize checkout.".to_string()
         } else {
             format!(
                 "I found {} products that match your request.",
@@ -219,15 +234,14 @@ Confidence must be between 0 and 1.
         };
 
         let Some(choice) = body.choices.first() else {
-            tracing::warn!("AI provider returned no choices; falling back to deterministic demo intent");
+            tracing::warn!(
+                "AI provider returned no choices; falling back to deterministic demo intent"
+            );
 
             return Ok(extract_demo_intent(message));
         };
 
-        let content = choice
-            .message
-            .content
-            .trim();
+        let content = choice.message.content.trim();
 
         serde_json::from_str::<CustomerIntent>(content).or_else(|error| {
             tracing::warn!(
@@ -267,11 +281,7 @@ fn extract_demo_intent(message: &str) -> CustomerIntent {
         .filter_map(|part| part.parse::<i64>().ok())
         .max();
 
-    let keywords = lower
-        .split(|character: char| !character.is_ascii_alphanumeric())
-        .filter(|part| part.len() > 2)
-        .map(ToString::to_string)
-        .collect();
+    let keywords = extract_keywords(&lower);
 
     CustomerIntent {
         category,
@@ -308,16 +318,14 @@ fn normalize_intent(mut intent: CustomerIntent, message: &str) -> CustomerIntent
     {
         Some("Running".to_string())
     } else {
-        intent.category
+        None
     };
 
-    if intent.keywords.is_empty() {
-        intent.keywords = message
-            .to_lowercase()
-            .split(|character: char| !character.is_ascii_alphanumeric())
-            .filter(|part| part.len() > 2)
-            .map(ToString::to_string)
-            .collect();
+    let normalized_keywords =
+        extract_keywords(&format!("{} {}", message, intent.keywords.join(" ")));
+
+    if !normalized_keywords.is_empty() {
+        intent.keywords = normalized_keywords;
     }
 
     if !intent.wants_recommendation {
@@ -329,6 +337,43 @@ fn normalize_intent(mut intent: CustomerIntent, message: &str) -> CustomerIntent
     }
 
     intent
+}
+
+fn extract_keywords(value: &str) -> Vec<String> {
+    value
+        .to_lowercase()
+        .split(|character: char| !character.is_ascii_alphanumeric())
+        .filter(|part| part.len() > 2)
+        .filter(|part| !part.chars().all(|character| character.is_ascii_digit()))
+        .filter(|part| !is_stop_word(part))
+        .map(ToString::to_string)
+        .collect()
+}
+
+fn is_stop_word(keyword: &str) -> bool {
+    matches!(
+        keyword,
+        "need"
+            | "want"
+            | "show"
+            | "find"
+            | "recommend"
+            | "buy"
+            | "under"
+            | "below"
+            | "less"
+            | "than"
+            | "best"
+            | "good"
+            | "for"
+            | "with"
+            | "and"
+            | "the"
+            | "that"
+            | "this"
+            | "please"
+            | "looking"
+    )
 }
 
 #[derive(Debug, Serialize)]

@@ -76,7 +76,8 @@ function AgentContent() {
         <div
           className={
             status === "BLOCKED" ||
-            status === "FAILED"
+            status === "FAILED" ||
+            status === "OUT_OF_CATALOG"
               ? "agent-live danger"
               : "agent-live"
           }
@@ -307,6 +308,8 @@ function AgentContent() {
                 ? "Customer confirmation required"
                 : status === "BLOCKED"
                 ? "Blocked by policy"
+                : status === "OUT_OF_CATALOG"
+                ? "Out of catalog"
                 : "Authorization required"}
 
               <ChevronRight size={16} />

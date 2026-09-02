@@ -73,6 +73,8 @@ function AgentActivity() {
       description:
         decision
           ? "Relevant products identified from the merchant catalog."
+          : status === "OUT_OF_CATALOG"
+          ? "No matching product exists in this merchant catalog."
           : "Agent will search available products after understanding intent.",
 
       icon: Search,
@@ -166,6 +168,8 @@ function AgentActivity() {
       description:
         checkoutResult
           ? "Razorpay order request completed by the backend."
+          : status === "OUT_OF_CATALOG"
+          ? "Checkout stayed locked because the item is not sold here."
           : status === "FAILED"
           ? "Checkout failed safely and the audit trail records why."
           : "Checkout remains locked until authorization is complete.",
@@ -203,8 +207,9 @@ function AgentActivity() {
 
         <span
           className={
-            status === "BLOCKED" ||
-            status === "FAILED"
+        status === "BLOCKED" ||
+            status === "FAILED" ||
+            status === "OUT_OF_CATALOG"
               ? "live-small danger"
               : "live-small"
           }
@@ -405,6 +410,7 @@ function getStageStatus(
   const order = [
     "UNDERSTANDING",
     "SEARCHING",
+    "OUT_OF_CATALOG",
     "DECIDING",
     "READY_FOR_AUTHORIZATION",
     "GUARDRAIL_CHECK",
@@ -426,6 +432,18 @@ function getStageStatus(
 
   if (current === "FAILED") {
     return "BLOCKED";
+  }
+
+  if (current === "OUT_OF_CATALOG") {
+    if (stage === "UNDERSTANDING") {
+      return "DONE";
+    }
+
+    if (stage === "SEARCHING") {
+      return "BLOCKED";
+    }
+
+    return "WAITING";
   }
 
   if (
@@ -523,7 +541,8 @@ function getStateClass(
 
   if (
     status ===
-    "REVIEW_REQUIRED"
+      "REVIEW_REQUIRED" ||
+    status === "OUT_OF_CATALOG"
   ) {
     return "review";
   }

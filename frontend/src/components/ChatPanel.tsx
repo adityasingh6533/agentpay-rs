@@ -45,6 +45,10 @@ const demoPrompts = [
     label: "Tee",
     prompt: "Recommend a performance tee under 800",
   },
+  {
+    label: "Out of catalog",
+    prompt: "I need a mobile phone under 2000",
+  },
 ];
 
 function ChatPanel() {
@@ -175,7 +179,8 @@ function ChatPanel() {
           <span
             className={
               status === "FAILED" ||
-              status === "BLOCKED"
+              status === "BLOCKED" ||
+              status === "OUT_OF_CATALOG"
                 ? "status-dot danger"
                 : "status-dot"
             }
@@ -386,7 +391,7 @@ function ChatPanel() {
                 </div>
               )}
 
-              {!authorization && (
+              {!authorization && currentRecommendation && (
                 <div className="chat-confirmation">
                   <div>
                     <strong>
@@ -524,6 +529,14 @@ function ChatPanel() {
                   tone="review"
                   title="Human review required"
                   copy="The policy engine requires review. No money has moved."
+                />
+              )}
+
+              {status === "OUT_OF_CATALOG" && (
+                <StateNotice
+                  tone="blocked"
+                  title="Out of catalog"
+                  copy="The merchant does not sell a matching product, so the agent stopped before authorization or checkout."
                 />
               )}
 

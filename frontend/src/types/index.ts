@@ -2,6 +2,7 @@ export type AgentStatus =
   | "IDLE"
   | "UNDERSTANDING"
   | "SEARCHING"
+  | "OUT_OF_CATALOG"
   | "DECIDING"
   | "READY_FOR_AUTHORIZATION"
   | "GUARDRAIL_CHECK"
