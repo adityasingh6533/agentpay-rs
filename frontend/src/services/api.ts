@@ -71,6 +71,10 @@ export type DashboardAnalytics = {
   };
 };
 
+export type PublicConfig = {
+  razorpay_key_id: string;
+};
+
 /* =========================================================
    API CONFIG
    ========================================================= */
@@ -89,6 +93,17 @@ const client: AxiosInstance = axios.create({
     "Content-Type": "application/json",
   },
 });
+
+const config = {
+  async public(): Promise<PublicConfig> {
+    const response =
+      await client.get<PublicConfig>(
+        "/config/public"
+      );
+
+    return response.data;
+  },
+};
 
 /* =========================================================
    RESPONSE INTERCEPTOR
@@ -547,6 +562,28 @@ const checkout = {
     return response.data;
   },
 
+  async verifyPayment(payload: {
+    session_id: string;
+    intent_id: string;
+    razorpay_order_id: string;
+    razorpay_payment_id: string;
+    razorpay_signature: string;
+  }): Promise<{
+    status: string;
+    intent_id: string;
+    razorpay_order_id: string;
+    razorpay_payment_id: string;
+    message: string;
+  }> {
+    const response =
+      await client.post(
+        "/checkout/verify-payment",
+        payload
+      );
+
+    return response.data;
+  },
+
   async create(
     payload: CreateCheckoutRequest
   ): Promise<Checkout> {
@@ -617,6 +654,7 @@ const analytics = {
    ========================================================= */
 
 const api = {
+  config,
   agent,
   catalog,
   customer,

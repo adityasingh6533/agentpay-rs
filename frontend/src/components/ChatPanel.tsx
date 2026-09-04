@@ -76,10 +76,13 @@ function ChatPanel() {
     agentResult,
     authorization,
     checkoutResult,
+    paymentResult,
+    canPay,
     sendMessage,
     authorizeCheckout,
     confirmAction,
     executeCheckout,
+    payWithRazorpay,
     loadAuditTrail,
     clearError,
   } = useAgentContext();
@@ -161,6 +164,12 @@ function ChatPanel() {
       await loadAuditTrail();
     };
 
+  const handlePayment =
+    async () => {
+      await payWithRazorpay();
+      await loadAuditTrail();
+    };
+
   return (
     <div className="chat-panel">
       <div className="chat-panel-header">
@@ -181,7 +190,7 @@ function ChatPanel() {
 
               <span>
                 Ask, recommend, authorize,
-                confirm, create order
+                confirm, create order, pay
               </span>
             </div>
           </div>
@@ -226,6 +235,14 @@ function ChatPanel() {
         <Stage
           label="Order"
           active={Boolean(checkoutResult)}
+        />
+        <Stage
+          label="Pay"
+          active={
+            paymentResult.status ===
+              "SUCCESS" ||
+            status === "PAYMENT_PENDING"
+          }
         />
       </div>
 
@@ -536,6 +553,53 @@ function ChatPanel() {
                 </div>
               )}
 
+              {canPay && (
+                <ActionPanel
+                  title="Customer payment ready"
+                  copy="The Razorpay order exists. Open the test-mode Checkout popup and complete payment with test details."
+                  button="Pay with Razorpay"
+                  icon={
+                    <CreditCard size={13} />
+                  }
+                  onClick={handlePayment}
+                  disabled={isLoading}
+                />
+              )}
+
+              {paymentResult.status ===
+                "SUCCESS" && (
+                <div className="chat-policy">
+                  <div className="chat-policy-title">
+                    <Check size={12} />
+                    <span>
+                      PAYMENT COMPLETED
+                    </span>
+                  </div>
+
+                  <div className="chat-policy-list">
+                    <PolicyItem
+                      label="Payment"
+                      value={
+                        paymentResult.razorpay_payment_id ||
+                        "Captured"
+                      }
+                    />
+                    <PolicyItem
+                      label="Signature"
+                      value={
+                        paymentResult.razorpay_signature
+                          ? "Received"
+                          : "Pending"
+                      }
+                    />
+                  </div>
+
+                  <p className="chat-policy-reason">
+                    {paymentResult.message}
+                  </p>
+                </div>
+              )}
+
               {needsReview && (
                 <StateNotice
                   tone="review"
@@ -773,7 +837,7 @@ function formatStatus(status: string) {
 }
 
 function formatCurrency(amount: number) {
-  return `₹${amount.toLocaleString(
+  return `INR ${amount.toLocaleString(
     "en-IN"
   )}`;
 }

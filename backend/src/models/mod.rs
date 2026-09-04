@@ -11,6 +11,7 @@ pub use agent_catalog::{AgentCapabilities, AgentCatalog, AgentProduct};
 pub use audit::AuditEvent;
 pub use checkout::{
     CheckoutAuthorization, CheckoutRequest, CheckoutResponse, ExecuteCheckoutRequest,
+    VerifyPaymentRequest, VerifyPaymentResponse,
 };
 pub use confirmation::{ConfirmationRequest, ConfirmationResponse};
 pub use customer::{CreateCustomer, Customer};

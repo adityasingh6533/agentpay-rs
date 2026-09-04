@@ -41,6 +41,7 @@ function AgentActivity() {
     decision,
     authorization,
     checkoutResult,
+    paymentResult,
   } = useAgentContext();
 
   const activities: Activity[] = [
@@ -134,6 +135,12 @@ function AgentActivity() {
 
       description:
         status === "AUTHORIZED"
+          || status ===
+            "PAYMENT_PENDING"
+          || status ===
+            "PAYMENT_SUCCESS"
+          || status ===
+            "PAYMENT_FAILED"
           ? "Customer action has been authorized."
           : authorization?.decision ===
             "REVIEW"
@@ -146,7 +153,10 @@ function AgentActivity() {
       icon: UserCheck,
 
       status:
-        status === "AUTHORIZED"
+        status === "AUTHORIZED" ||
+        status === "PAYMENT_PENDING" ||
+        status === "PAYMENT_SUCCESS" ||
+        status === "PAYMENT_FAILED"
           ? "DONE"
           : authorization?.decision ===
             "REVIEW"
@@ -166,8 +176,14 @@ function AgentActivity() {
         "Secure checkout",
 
       description:
-        checkoutResult
-          ? "Razorpay order request completed by the backend."
+        status === "PAYMENT_SUCCESS"
+          ? "Customer completed Razorpay Checkout; backend verified signature and marked checkout paid."
+          : status ===
+            "PAYMENT_FAILED"
+          ? paymentResult.message ||
+            "Payment failed safely before final capture."
+          : checkoutResult
+          ? "Razorpay order created; waiting for customer payment."
           : status === "OUT_OF_CATALOG"
           ? "Checkout stayed locked because the item is not sold here."
           : status === "FAILED"
@@ -178,8 +194,15 @@ function AgentActivity() {
 
       status:
         status === "CHECKOUT" ||
-        status === "COMPLETED"
+        status === "PAYMENT_PENDING"
+          ? "ACTIVE"
+          : status ===
+            "PAYMENT_SUCCESS"
+          || status === "COMPLETED"
           ? "DONE"
+          : status ===
+            "PAYMENT_FAILED"
+          ? "BLOCKED"
           : status === "BLOCKED"
           ? "BLOCKED"
           : "WAITING",
@@ -417,6 +440,9 @@ function getStageStatus(
     "AWAITING_CONFIRMATION",
     "AUTHORIZED",
     "CHECKOUT",
+    "PAYMENT_PENDING",
+    "PAYMENT_SUCCESS",
+    "PAYMENT_FAILED",
     "COMPLETED",
   ];
 
@@ -506,6 +532,9 @@ function getGuardrailStatus(
       "AWAITING_CONFIRMATION" ||
     status === "AUTHORIZED" ||
     status === "CHECKOUT" ||
+    status === "PAYMENT_PENDING" ||
+    status === "PAYMENT_SUCCESS" ||
+    status === "PAYMENT_FAILED" ||
     status === "COMPLETED"
   ) {
     return "DONE";
@@ -547,7 +576,10 @@ function getStateClass(
     return "review";
   }
 
-  if (status === "COMPLETED") {
+  if (
+    status === "COMPLETED" ||
+    status === "PAYMENT_SUCCESS"
+  ) {
     return "success";
   }
 

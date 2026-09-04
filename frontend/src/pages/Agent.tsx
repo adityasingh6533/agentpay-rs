@@ -4,10 +4,15 @@ import {
   ChevronRight,
   CircleDollarSign,
   CreditCard,
+  FileCheck2,
+  LockKeyhole,
+  ReceiptText,
   ShieldCheck,
   Sparkles,
   Target,
+  TrendingUp,
 } from "lucide-react";
+import type { ElementType } from "react";
 
 import "../styles/Agent.css";
 
@@ -33,14 +38,46 @@ function AgentContent() {
     cart,
     authorization,
     checkoutResult,
+    paymentResult,
     isLoading,
     error,
     canExecute,
+    canPay,
     executeCheckout,
+    payWithRazorpay,
   } = useAgentContext();
 
-  const handleExecuteCheckout = async () => {
-    if (!canExecute || isLoading || !cart) {
+  const primaryPrice =
+    currentRecommendation?.product.price ?? 0;
+  const predictedAov =
+    cart?.total ?? primaryPrice;
+  const aovLift =
+    predictedAov && primaryPrice
+      ? predictedAov - primaryPrice
+      : 0;
+  const checkoutPhase =
+    paymentResult.status === "SUCCESS"
+      ? "paid"
+      : canPay ||
+        status === "PAYMENT_PENDING"
+      ? "payment"
+      : checkoutResult
+      ? "order"
+      : authorization
+      ? "authorized"
+      : "locked";
+
+  const handleCheckoutAction = async () => {
+    if (
+      (!canExecute && !canPay) ||
+      isLoading ||
+      !cart
+    ) {
+      return;
+    }
+
+    if (canPay) {
+      await payWithRazorpay();
       return;
     }
 
@@ -88,6 +125,91 @@ function AgentContent() {
         </div>
       </div>
 
+      <div className="agent-proof-strip">
+        <ProofTile
+          icon={TrendingUp}
+          label="Revenue proof"
+          value={
+            cart
+              ? formatCurrency(predictedAov)
+              : "Waiting"
+          }
+          detail={
+            aovLift > 0
+              ? `+${formatCurrency(aovLift)} cross-sell lift`
+              : "Ask for a product to unlock growth"
+          }
+          tone={aovLift > 0 ? "success" : "neutral"}
+        />
+
+        <ProofTile
+          icon={LockKeyhole}
+          label="Money gate"
+          value={
+            authorization
+              ? authorization.decision
+              : "Locked"
+          }
+          detail={
+            authorization
+              ? authorization.reason
+              : "No payment action before policy checks"
+          }
+          tone={
+            authorization?.decision === "AUTHORIZED"
+              ? "success"
+              : authorization?.decision === "BLOCKED"
+              ? "danger"
+              : authorization?.decision === "REVIEW"
+              ? "review"
+              : "neutral"
+          }
+        />
+
+        <ProofTile
+          icon={ReceiptText}
+          label="Razorpay order"
+          value={
+            checkoutResult?.razorpay_order_id
+              ? "Created"
+              : "Pending"
+          }
+          detail={
+            checkoutResult?.razorpay_order_id ||
+            "Server creates order after signed intent"
+          }
+          tone={checkoutResult ? "success" : "neutral"}
+        />
+
+        <ProofTile
+          icon={FileCheck2}
+          label="Payment proof"
+          value={
+            paymentResult.status === "SUCCESS"
+              ? "Completed"
+              : paymentResult.status === "FAILED"
+              ? "Stopped"
+              : canPay
+              ? "Ready"
+              : "Not started"
+          }
+          detail={
+            paymentResult.razorpay_payment_id ||
+            paymentResult.message ||
+            "Checkout popup opens only after order creation"
+          }
+          tone={
+            paymentResult.status === "SUCCESS"
+              ? "success"
+              : paymentResult.status === "FAILED"
+              ? "danger"
+              : canPay
+              ? "review"
+              : "neutral"
+          }
+        />
+      </div>
+
       <div className="agent-demo-card">
         <div className="agent-demo-title">
           <Target size={17} />
@@ -111,7 +233,7 @@ function AgentContent() {
           <DemoStep
             number="3"
             title="Razorpay"
-            text="Confirm, then create test-mode Razorpay order. Show order id and transaction page."
+            text="Confirm, create a test-mode order, then open Razorpay Checkout from the UI."
           />
           <DemoStep
             number="4"
@@ -287,6 +409,41 @@ function AgentContent() {
               <CircleDollarSign size={23} />
             </div>
 
+            <div className="checkout-progress">
+              <CheckoutStep
+                label="Authorized"
+                active={
+                  checkoutPhase ===
+                    "authorized" ||
+                  checkoutPhase === "order" ||
+                  checkoutPhase ===
+                    "payment" ||
+                  checkoutPhase === "paid"
+                }
+              />
+              <CheckoutStep
+                label="Order"
+                active={
+                  checkoutPhase === "order" ||
+                  checkoutPhase ===
+                    "payment" ||
+                  checkoutPhase === "paid"
+                }
+              />
+              <CheckoutStep
+                label="Payment"
+                active={
+                  checkoutPhase ===
+                    "payment" ||
+                  checkoutPhase === "paid"
+                }
+              />
+              <CheckoutStep
+                label="Proof"
+                active={checkoutPhase === "paid"}
+              />
+            </div>
+
             {cart?.items?.length ? (
               <div className="checkout-items">
                 {cart.items.map((item) => (
@@ -327,16 +484,24 @@ function AgentContent() {
             <button
               className="checkout-button"
               disabled={
-                !canExecute ||
+                (!canExecute && !canPay) ||
                 isLoading ||
                 !cart
               }
-              onClick={handleExecuteCheckout}
+              onClick={handleCheckoutAction}
             >
               <CreditCard size={16} />
 
-              {canExecute
+              {canPay
+                ? "Pay with Razorpay"
+                : canExecute
                 ? "Create Razorpay order"
+                : status ===
+                  "PAYMENT_SUCCESS"
+                ? "Payment completed"
+                : status ===
+                  "PAYMENT_FAILED"
+                ? "Payment failed safely"
                 : status ===
                   "AWAITING_CONFIRMATION"
                 ? "Customer confirmation required"
@@ -349,9 +514,35 @@ function AgentContent() {
               <ChevronRight size={16} />
             </button>
 
+            <div className="checkout-action-note">
+              {canPay
+                ? "Opens Razorpay Checkout with the backend-created order ID."
+                : canExecute
+                ? "Creates an order only after signed intent and policy checks."
+                : paymentResult.status ===
+                  "SUCCESS"
+                ? "Payment signature verified; backend checkout is paid."
+                : "Payment remains locked until recommendation, authorization and confirmation are complete."}
+            </div>
+
             {checkoutResult && (
               <div className="checkout-empty">
                 {checkoutResult.message}
+                {checkoutResult.razorpay_order_id ? (
+                  <>
+                    <br />
+                    Order:{" "}
+                    {checkoutResult.razorpay_order_id}
+                  </>
+                ) : null}
+              </div>
+            )}
+
+            {paymentResult.status ===
+              "SUCCESS" && (
+              <div className="checkout-success">
+                Payment ID:{" "}
+                {paymentResult.razorpay_payment_id}
               </div>
             )}
 
@@ -432,8 +623,61 @@ function DemoStep({
   );
 }
 
+function ProofTile({
+  icon: Icon,
+  label,
+  value,
+  detail,
+  tone,
+}: {
+  icon: ElementType;
+  label: string;
+  value: string;
+  detail: string;
+  tone:
+    | "neutral"
+    | "success"
+    | "review"
+    | "danger";
+}) {
+  return (
+    <div className={`proof-tile ${tone}`}>
+      <div className="proof-icon">
+        <Icon size={15} />
+      </div>
+
+      <div>
+        <span>{label}</span>
+        <strong>{value}</strong>
+        <p>{detail}</p>
+      </div>
+    </div>
+  );
+}
+
+function CheckoutStep({
+  label,
+  active,
+}: {
+  label: string;
+  active: boolean;
+}) {
+  return (
+    <div
+      className={
+        active
+          ? "checkout-step active"
+          : "checkout-step"
+      }
+    >
+      <span />
+      {label}
+    </div>
+  );
+}
+
 function formatCurrency(amount: number) {
-  return `₹${amount.toLocaleString(
+  return `INR ${amount.toLocaleString(
     "en-IN"
   )}`;
 }

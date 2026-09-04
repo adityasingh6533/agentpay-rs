@@ -4,7 +4,7 @@ use axum::{
     routing::{get, post},
 };
 
-use super::{analytics, catalog, checkout, policy};
+use super::{analytics, catalog, checkout, config, policy};
 
 use crate::api::agent_catalog;
 use crate::{AppState, errors::AppError, webhooks};
@@ -28,6 +28,7 @@ async fn health(State(state): State<AppState>) -> Result<Json<HealthResponse>, A
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/health", get(health))
+        .route("/config/public", get(config::public_config))
         .route("/agent/sessions", post(super::agent::create_session))
         .route(
             "/agent/sessions/{session_id}/audit",
@@ -41,6 +42,7 @@ pub fn router() -> Router<AppState> {
         .route("/policy/{merchant_id}", get(policy::get_policy))
         .route("/checkout/authorize", post(checkout::authorize_checkout))
         .route("/checkout/execute", post(checkout::execute_checkout))
+        .route("/checkout/verify-payment", post(checkout::verify_payment))
         .route(
             "/webhooks/razorpay",
             post(webhooks::razorpay::razorpay_webhook),

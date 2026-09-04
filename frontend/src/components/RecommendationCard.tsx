@@ -80,7 +80,7 @@ function RecommendationCard({
           <p>{recommendation.description}</p>
 
           <div className="recommendation-rating">
-            <span>★</span>
+            <span>Rating</span>
 
             <strong>
               {recommendation.rating}
@@ -92,7 +92,7 @@ function RecommendationCard({
           </div>
 
           <strong className="recommendation-product-price">
-            ₹{recommendation.price.toLocaleString("en-IN")}
+            INR {recommendation.price.toLocaleString("en-IN")}
           </strong>
         </div>
       </div>
@@ -135,7 +135,7 @@ function RecommendationCard({
 
           <div className="crosssell-action">
             <strong>
-              ₹
+              INR{" "}
               {recommendation.crossSell.price.toLocaleString(
                 "en-IN"
               )}
@@ -161,10 +161,10 @@ function RecommendationCard({
           label="EXPECTED AOV"
           value={
             recommendation.expectedAOV
-              ? `₹${recommendation.expectedAOV.toLocaleString(
+              ? `INR ${recommendation.expectedAOV.toLocaleString(
                   "en-IN"
                 )}`
-              : "—"
+              : "-"
           }
         />
 

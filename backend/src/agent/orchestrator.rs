@@ -149,6 +149,10 @@ impl AgentOrchestrator {
     }
 
     async fn extract_intent(&self, message: &str) -> Result<CustomerIntent, AppError> {
+        if !self.config.ai_provider_enabled {
+            return Ok(extract_demo_intent(message));
+        }
+
         if self.uses_placeholder_ai_config() {
             return Ok(extract_demo_intent(message));
         }

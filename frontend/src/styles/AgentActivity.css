@@ -426,3 +426,65 @@
 .live-small.danger {
   color: #e46d75;
 }
+
+/* PITCH POLISH: readable decision pipeline */
+
+.activity-title-row {
+  gap: 10px;
+}
+
+.activity-badge {
+  padding: 5px 7px;
+  border-radius: 7px;
+  font-size: 8px;
+}
+
+.activity-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+}
+
+.activity-connector {
+  top: 32px;
+  height: 44px;
+}
+
+.activity-content {
+  padding-bottom: 18px;
+}
+
+.activity-content strong {
+  color: #d0d3db;
+  font-size: 13px;
+}
+
+.activity-content p {
+  color: #969ca8;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.activity-content span {
+  font-size: 10px;
+}
+
+.activity-current-state {
+  gap: 10px;
+  margin-top: 12px;
+  padding: 11px 12px;
+  border-radius: 10px;
+}
+
+.activity-current-state .state-dot {
+  width: 7px;
+  height: 7px;
+}
+
+.activity-current-state span:not(.state-dot) {
+  font-size: 8px;
+}
+
+.activity-current-state strong {
+  font-size: 12px;
+}

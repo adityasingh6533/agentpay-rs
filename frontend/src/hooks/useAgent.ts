@@ -5,6 +5,10 @@ import {
 } from "react";
 
 import api from "../services/api";
+import {
+  openRazorpayCheckout,
+  type RazorpayPaymentSuccess,
+} from "../services/razorpay";
 
 import type {
   AgentAction,
@@ -28,6 +32,9 @@ export type AgentStatus =
   | "AWAITING_CONFIRMATION"
   | "AUTHORIZED"
   | "CHECKOUT"
+  | "PAYMENT_PENDING"
+  | "PAYMENT_SUCCESS"
+  | "PAYMENT_FAILED"
   | "COMPLETED"
   | "REVIEW_REQUIRED"
   | "BLOCKED"
@@ -81,6 +88,18 @@ type CheckoutExecutionResult = {
   message: string;
 };
 
+type PaymentResult = {
+  status:
+    | "IDLE"
+    | "OPENING"
+    | "SUCCESS"
+    | "FAILED";
+  message?: string;
+  razorpay_payment_id?: string;
+  razorpay_order_id?: string;
+  razorpay_signature?: string;
+};
+
 interface UseAgentOptions {
   customerId: string;
 }
@@ -114,6 +133,10 @@ export function useAgent({
     useState<string | null>(null);
   const [checkoutResult, setCheckoutResult] =
     useState<CheckoutExecutionResult | null>(null);
+  const [paymentResult, setPaymentResult] =
+    useState<PaymentResult>({
+      status: "IDLE",
+    });
   const [error, setError] =
     useState<AgentError | null>(null);
   const [isLoading, setIsLoading] =
@@ -208,6 +231,9 @@ export function useAgent({
       setAuthorization(null);
       setConfirmationToken(null);
       setCheckoutResult(null);
+      setPaymentResult({
+        status: "IDLE",
+      });
       setLastAction(null);
 
       try {
@@ -579,7 +605,12 @@ export function useAgent({
           });
 
         setCheckoutResult(response);
-        setStatus("COMPLETED");
+        setPaymentResult({
+          status: "IDLE",
+          message:
+            "Razorpay order is ready for customer payment.",
+        });
+        setStatus("PAYMENT_PENDING");
         await loadAuditTrail(session.id);
         return response;
       } catch (err) {
@@ -595,6 +626,123 @@ export function useAgent({
       confirmationToken,
       clearError,
       handleError,
+      loadAuditTrail,
+    ]);
+
+  const payWithRazorpay =
+    useCallback(async () => {
+      if (!session || !checkoutResult) {
+        setError({
+          message:
+            "Create a Razorpay order before opening payment.",
+        });
+
+        return null;
+      }
+
+      if (
+        !checkoutResult.razorpay_order_id ||
+        !checkoutResult.amount ||
+        !checkoutResult.currency
+      ) {
+        setError({
+          message:
+            "Razorpay order is missing payment details.",
+        });
+
+        return null;
+      }
+
+      setIsLoading(true);
+      clearError();
+      setPaymentResult({
+        status: "OPENING",
+        message:
+          "Opening Razorpay Checkout for customer payment.",
+      });
+
+      try {
+        const publicConfig =
+          await api.config.public();
+
+        if (
+          !publicConfig.razorpay_key_id
+        ) {
+          throw new Error(
+            "Backend did not return Razorpay key ID."
+          );
+        }
+
+        const result =
+          await openRazorpayCheckout({
+            key:
+              publicConfig.razorpay_key_id,
+            amount:
+              checkoutResult.amount,
+            currency:
+              checkoutResult.currency,
+            name:
+              "AgentPay Demo Merchant",
+            description:
+              buildPaymentDescription(
+                cart
+              ),
+            order_id:
+              checkoutResult.razorpay_order_id,
+            prefill: {
+              name:
+                session.customerId ||
+                "Demo Customer",
+              email: "demo@example.com",
+              contact: "9999999999",
+            },
+            notes: {
+              session_id: session.id,
+              intent_id:
+                checkoutResult.intent_id,
+              source:
+                "agentpay-frontend",
+            },
+            theme: {
+              color: "#8065f5",
+            },
+          });
+
+        const nextPaymentResult =
+          await verifyRazorpayPayment(
+            session.id,
+            checkoutResult.intent_id,
+            result
+          );
+
+        setPaymentResult(
+          nextPaymentResult
+        );
+        setStatus("PAYMENT_SUCCESS");
+        await loadAuditTrail(session.id);
+        return nextPaymentResult;
+      } catch (err) {
+        const message =
+          err instanceof Error
+            ? err.message
+            : "Razorpay payment could not be completed.";
+
+        setPaymentResult({
+          status: "FAILED",
+          message,
+        });
+        setStatus("PAYMENT_FAILED");
+        setError({ message });
+        await loadAuditTrail(session.id);
+        return null;
+      } finally {
+        setIsLoading(false);
+      }
+    }, [
+      session,
+      checkoutResult,
+      cart,
+      clearError,
       loadAuditTrail,
     ]);
 
@@ -648,6 +796,9 @@ export function useAgent({
     setAuthorization(null);
     setConfirmationToken(null);
     setCheckoutResult(null);
+    setPaymentResult({
+      status: "IDLE",
+    });
     setError(null);
     setIsLoading(false);
   }, []);
@@ -661,6 +812,12 @@ export function useAgent({
     authorization?.decision ===
       "AUTHORIZED";
 
+  const canPay =
+    status === "PAYMENT_PENDING" &&
+    Boolean(
+      checkoutResult?.razorpay_order_id
+    );
+
   const needsReview =
     status === "REVIEW_REQUIRED";
 
@@ -669,6 +826,8 @@ export function useAgent({
 
   const isTerminal =
     status === "COMPLETED" ||
+    status === "PAYMENT_SUCCESS" ||
+    status === "PAYMENT_FAILED" ||
     status === "FAILED" ||
     status === "BLOCKED" ||
     status === "OUT_OF_CATALOG";
@@ -695,10 +854,12 @@ export function useAgent({
     authorization,
     confirmationToken,
     checkoutResult,
+    paymentResult,
     isLoading,
     error,
     canConfirm,
     canExecute,
+    canPay,
     needsReview,
     isBlocked,
     isTerminal,
@@ -707,6 +868,7 @@ export function useAgent({
     authorizeCheckout,
     confirmAction,
     executeCheckout,
+    payWithRazorpay,
     loadCart,
     addProduct,
     loadSpendingLimits,
@@ -714,6 +876,58 @@ export function useAgent({
     clearError,
     reset,
   };
+}
+
+function mapRazorpaySuccess(
+  result: RazorpayPaymentSuccess,
+  message: string
+): PaymentResult {
+  return {
+    status: "SUCCESS",
+    message,
+    razorpay_payment_id:
+      result.razorpay_payment_id,
+    razorpay_order_id:
+      result.razorpay_order_id,
+    razorpay_signature:
+      result.razorpay_signature,
+  };
+}
+
+async function verifyRazorpayPayment(
+  sessionId: string,
+  intentId: string,
+  result: RazorpayPaymentSuccess
+): Promise<PaymentResult> {
+  const verification =
+    await api.checkout.verifyPayment({
+      session_id: sessionId,
+      intent_id: intentId,
+      razorpay_order_id:
+        result.razorpay_order_id,
+      razorpay_payment_id:
+        result.razorpay_payment_id,
+      razorpay_signature:
+        result.razorpay_signature,
+    });
+
+  return mapRazorpaySuccess(
+    result,
+    verification.message
+  );
+}
+
+function buildPaymentDescription(
+  cart: Cart | null
+) {
+  if (!cart?.items.length) {
+    return "AgentPay guarded checkout";
+  }
+
+  return cart.items
+    .map((item) => item.productName)
+    .join(" + ")
+    .slice(0, 120);
 }
 
 function buildCart(
